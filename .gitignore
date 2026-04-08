@@ -5,3 +5,6 @@ gen/
 
 build/
 bin/
+.env
+__pycache__/
+output/
