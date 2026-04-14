@@ -1,0 +1,10 @@
+requests
+beautifulsoup4
+pandas
+newspaper3k
+lxml[html_clean]
+lxml_html_clean
+konlpy
+JPype1
+psycopg2-binary
+python-dotenv
