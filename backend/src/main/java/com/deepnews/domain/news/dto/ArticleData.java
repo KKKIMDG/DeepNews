@@ -1,23 +1,22 @@
 package com.deepnews.domain.news.dto;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
+
 import java.util.HashMap;
 import java.util.Map;
 
-@Data
-public class NewsCrawlRequestDto {
-    private String title;
-    private String url;
+@Getter
+@Setter
+public class ArticleData {
 
     private String source;
     private String content;
-    private String original_content;
-    private String published_at;
-
-    private Map<String, Integer> token_counts;
+    private String publishedAt;
 
     private Map<String, Object> extraData = new HashMap<>();
+
 
     @JsonAnySetter
     public void setExtraData(String key, Object value) {

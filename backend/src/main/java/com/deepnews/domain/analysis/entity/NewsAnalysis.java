@@ -8,6 +8,7 @@ import org.hibernate.type.SqlTypes;
 import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.time.ZonedDateTime;
 
 @Entity
@@ -43,5 +44,5 @@ public class NewsAnalysis {
 
     @CreatedDate
     @Column(updatable = false)
-    private ZonedDateTime analyzedAt;
+    private LocalDateTime analyzedAt;
 }
