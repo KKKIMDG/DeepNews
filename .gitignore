@@ -8,3 +8,9 @@ bin/
 .env
 __pycache__/
 output/
+
+bigkinds_csv/
+model_ad/
+*.pyc
+*.jsonl
+*.csv
