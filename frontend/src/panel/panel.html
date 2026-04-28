@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepNews Analyzer</title>
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="hero">
+        <div class="hero-top">
+          <div>
+            <p class="eyebrow">DeepNews</p>
+            <h1>기사 분석 요약</h1>
+          </div>
+          <label class="theme-toggle" for="theme-toggle">
+            <input id="theme-toggle" type="checkbox" />
+            <span>다크모드</span>
+          </label>
+        </div>
+        <p class="subcopy">키워드, AI 요약, 유사 기사, 광고성 판단 결과를 한눈에 확인합니다.</p>
+      </header>
+
+      <section class="card">
+        <h2>핵심 키워드</h2>
+        <div id="keyword-list" class="keyword-list"></div>
+      </section>
+
+      <section class="card">
+        <h2>키워드 빈도</h2>
+        <div id="keyword-chart" class="chart"></div>
+      </section>
+
+      <section class="card">
+        <h2>AI 요약</h2>
+        <p id="summary" class="summary">분석 데이터를 불러오는 중입니다.</p>
+      </section>
+
+      <section class="card">
+        <h2>유사 기사 추천</h2>
+        <ul id="recommendations" class="recommendations"></ul>
+      </section>
+
+      <section class="card">
+        <h2>광고성 판단</h2>
+        <p id="ad-likelihood" class="ad-likelihood"></p>
+      </section>
+    </main>
+
+    <script type="module" src="./panel.js"></script>
+  </body>
+</html>

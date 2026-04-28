@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "DeepNews Analyzer",
+  "version": "0.1.0",
+  "description": "Analyze Naver news articles with keyword highlighting, summary, recommendation, and ad-likeness checks.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "https://news.naver.com/*",
+    "https://n.news.naver.com/*",
+    "https://api.example.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://news.naver.com/*",
+        "https://n.news.naver.com/*"
+      ],
+      "js": [
+        "src/content/content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "src/panel/panel.html"
+  },
+  "action": {
+    "default_title": "DeepNews Analyzer"
+  }
+}
