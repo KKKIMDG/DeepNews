@@ -14,3 +14,6 @@ model_ad/
 *.pyc
 *.jsonl
 *.csv
+backend/batch/.venv/
+backend/batch/runtime/
+backend/batch/logs/
