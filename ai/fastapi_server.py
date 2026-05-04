@@ -27,12 +27,12 @@ class ArticleRequest(BaseModel):
     text:  str
 
 class AnalysisResponse(BaseModel):
-    url:     str
-    title:   str
-    is_ad:   bool
-    ad_prob: float
-    summary: str        # 요약 모델 완성 전까지 빈값
-    entities: list      # 타임라인 모델 완성 전까지 빈값
+    url:            str
+    title:          str
+    is_clickbait:   bool
+    ad_probability: float
+    summary:        str
+    named_entities: list
 
 # ── 광고 판별 함수 ─────────────────────────────────
 def predict_ad(text: str) -> dict:
@@ -61,12 +61,12 @@ def analyze(req: ArticleRequest):
     ad_result = predict_ad(req.text)
 
     return AnalysisResponse(
-        url     = req.url,
-        title   = req.title,
-        is_ad   = ad_result["is_ad"],
-        ad_prob = ad_result["ad_prob"],
-        summary  = "",      # 요약 모델 완성 후 채울 것
-        entities = [],      # 타임라인 모델 완성 후 채울 것
+        url           = req.url,
+        title         = req.title,
+        is_clickbait  = ad_result["is_ad"],
+        ad_probability = round(ad_result["ad_prob"], 2), 
+        summary        = "",
+        named_entities = [],
     )
 
 @app.get("/health")
