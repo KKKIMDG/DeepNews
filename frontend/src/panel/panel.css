@@ -171,18 +171,111 @@ body {
   list-style: none;
 }
 
-.recommendations li + li {
+.recommendation-item + .recommendation-item {
   margin-top: 10px;
 }
 
-.recommendations a {
+.auth-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.auth-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.auth-actions button,
+.text-button {
+  min-height: 34px;
+  border: 1px solid rgba(3, 199, 90, 0.34);
+  border-radius: 8px;
+  background: rgba(3, 199, 90, 0.1);
+  color: var(--brand);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.text-button {
+  min-height: 30px;
+  padding: 5px 9px;
+  background: transparent;
+}
+
+.auth-form.is-logged-in .auth-actions {
+  display: none;
+}
+
+.recommendation-title {
+  display: inline;
   color: inherit;
   text-decoration: none;
   border-bottom: 1px solid rgba(3, 199, 90, 0.32);
 }
 
-:root[data-theme="dark"] .recommendations a {
+:root[data-theme="dark"] .recommendation-title {
   border-bottom-color: rgba(3, 199, 90, 0.36);
+}
+
+.recommendation-reason {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.recommendation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.recommendation-action {
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.recommendation-action:hover,
+.recommendation-action.is-active {
+  border-color: rgba(3, 199, 90, 0.36);
+  color: var(--brand);
+  background: rgba(3, 199, 90, 0.08);
+}
+
+.recommendation-action:disabled {
+  cursor: default;
+  opacity: 0.72;
 }
 
 .score-good {

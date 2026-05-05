@@ -5,10 +5,10 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class AnalyzeArticleRequestDto {
+public class NewsInteractionRequestDto {
 
+    private Long newsId;
     private String url;
-    private String title;
-    private String content;
     private String clientUserId;
+    private String interactionType;
 }

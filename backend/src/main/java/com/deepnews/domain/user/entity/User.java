@@ -28,6 +28,9 @@ public class User {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Column(nullable = false, unique = true, length = 60)
+    private String loginId;
+
     private String password;
 
     @Column(nullable = false, length = 50)
@@ -55,4 +58,8 @@ public class User {
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Bookmark> bookmarks = new ArrayList<>();
+
+    public void updatePassword(String password) {
+        this.password = password;
+    }
 }

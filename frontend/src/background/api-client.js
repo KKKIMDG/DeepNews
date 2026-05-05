@@ -1,4 +1,6 @@
-const BACKEND_BASE_URL = "http://127.0.0.1:8080/api/v1/news";
+const BACKEND_ORIGIN = "http://127.0.0.1:8080";
+const BACKEND_BASE_URL = `${BACKEND_ORIGIN}/api/v1/news`;
+const AUTH_BASE_URL = `${BACKEND_ORIGIN}/api/v1/auth`;
 
 async function safeJson(response) {
   if (!response.ok) {
@@ -8,7 +10,7 @@ async function safeJson(response) {
   return response.json();
 }
 
-export async function requestBackendAnalysis(article) {
+export async function requestBackendAnalysis(article, clientUserId) {
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/analyze`, {
       method: "POST",
@@ -16,7 +18,10 @@ export async function requestBackendAnalysis(article) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        url: article.url
+        url: article.url,
+        title: article.title,
+        content: article.body,
+        clientUserId
       })
     });
 
@@ -38,4 +43,54 @@ export async function requestBackendAnalysis(article) {
       }
     };
   }
+}
+
+export async function recordNewsInteraction({ newsId, url, clientUserId, interactionType }) {
+  if (!clientUserId || (!newsId && !url)) {
+    return;
+  }
+
+  await fetch(`${BACKEND_BASE_URL}/interactions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      newsId,
+      url,
+      clientUserId,
+      interactionType
+    })
+  });
+}
+
+export async function signUp({ loginId, password }) {
+  return requestAuth("/signup", { loginId, password });
+}
+
+export async function login({ loginId, password }) {
+  return requestAuth("/login", { loginId, password });
+}
+
+async function requestAuth(path, body) {
+  const response = await fetch(`${AUTH_BASE_URL}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    let message = `Auth request failed with ${response.status}`;
+    try {
+      const payload = await response.json();
+      message = payload.message || message;
+    } catch {
+      // Use the default message.
+    }
+    throw new Error(message);
+  }
+
+  return response.json();
 }

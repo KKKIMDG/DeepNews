@@ -1,8 +1,8 @@
 package com.deepnews.domain.news.controller;
 
-import com.deepnews.domain.analysis.service.AiClientService;
 import com.deepnews.domain.news.dto.AnalyzeArticleRequestDto;
 import com.deepnews.domain.news.dto.AnalyzeArticleResponseDto;
+import com.deepnews.domain.news.dto.NewsInteractionRequestDto;
 import com.deepnews.domain.news.dto.NewsCrawlRequestDto;
 import com.deepnews.domain.news.service.NewsService;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +34,12 @@ public class NewsController {
     @PostMapping("/analyze")
     public ResponseEntity<AnalyzeArticleResponseDto> analyzeArticle(@RequestBody AnalyzeArticleRequestDto dto) {
         return ResponseEntity.ok(newsService.analyzeOrGet(dto));
+    }
+
+    @PostMapping("/interactions")
+    public ResponseEntity<Void> recordInteraction(@RequestBody NewsInteractionRequestDto dto) {
+        newsService.recordInteraction(dto);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/crawl/bulk")

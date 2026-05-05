@@ -39,3 +39,4 @@ out/
 src/main/resources/application.yml
 
 .idea/
+bootRun-test.*.log

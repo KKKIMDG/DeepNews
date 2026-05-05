@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, TYPE_CHECKING
+from urllib.parse import quote_plus
 
 import psycopg2
 from psycopg2.extras import Json, execute_values
@@ -215,9 +216,22 @@ def refresh_keyword_stats(cursor, keyword_ids: set[int]) -> None:
 
 
 def _database_url_from_env() -> str:
-    database_url = (
-        __import__("os").environ.get("DATABASE_URL", "").strip()
+    os_module = __import__("os")
+    database_url = os_module.environ.get("DATABASE_URL", "").strip()
+    if database_url:
+        return database_url
+
+    host = os_module.environ.get("DB_HOST", "").strip()
+    port = os_module.environ.get("DB_PORT", "").strip()
+    name = os_module.environ.get("DB_NAME", "").strip()
+    user = os_module.environ.get("DB_USER", "").strip()
+    password = os_module.environ.get("DB_PASSWORD", "").strip()
+    sslmode = os_module.environ.get("DB_SSLMODE", "require").strip()
+
+    if not all([host, port, name, user, password]):
+        raise RuntimeError("DATABASE_URL or DB_* environment variables are required for Supabase sync.")
+
+    return (
+        f"postgresql://{quote_plus(user)}:{quote_plus(password)}"
+        f"@{host}:{port}/{name}?sslmode={quote_plus(sslmode)}"
     )
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is required for Supabase sync.")
-    return database_url

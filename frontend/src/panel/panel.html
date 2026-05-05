@@ -23,6 +23,22 @@
       </header>
 
       <section class="card">
+        <div class="auth-header">
+          <h2>계정</h2>
+          <button id="logout-button" class="text-button" type="button" hidden>로그아웃</button>
+        </div>
+        <form id="auth-form" class="auth-form">
+          <input id="login-id" type="text" autocomplete="username" placeholder="아이디" />
+          <input id="login-password" type="password" autocomplete="current-password" placeholder="비밀번호" />
+          <div class="auth-actions">
+            <button id="login-button" type="submit">로그인</button>
+            <button id="signup-button" type="button">회원가입</button>
+          </div>
+          <p id="auth-message" class="state-message"></p>
+        </form>
+      </section>
+
+      <section class="card">
         <h2>핵심 키워드</h2>
         <div id="keyword-list" class="keyword-list"></div>
       </section>

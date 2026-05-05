@@ -6,9 +6,9 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -21,19 +21,22 @@ public class AnalyzeArticleResponseDto {
     private ArticlePayload article;
     private List<KeywordPayload> keywords;
     private String summary;
-    private List<Map<String, String>> recommendations;
+    private List<RecommendationPayload> recommendations;
     private AdLikelihood adLikelihood;
 
-    public static AnalyzeArticleResponseDto from(News news, NewsAnalysis analysis, boolean cached) {
+    public static AnalyzeArticleResponseDto from(
+            News news,
+            NewsAnalysis analysis,
+            boolean cached,
+            List<RecommendationPayload> recommendations
+    ) {
         return AnalyzeArticleResponseDto.builder()
                 .newsId(news.getId())
                 .cached(cached)
                 .article(new ArticlePayload(news.getTitle(), news.getUrl()))
                 .keywords(extractKeywords(news))
                 .summary(analysis.getSummary())
-                .recommendations(List.of(
-                        Map.of("title", news.getTitle(), "url", news.getUrl())
-                ))
+                .recommendations(recommendations == null ? List.of() : new ArrayList<>(recommendations))
                 .adLikelihood(new AdLikelihood(
                         labelFor(analysis.getAdProbability()),
                         analysis.getAdProbability().doubleValue()
@@ -46,8 +49,8 @@ public class AnalyzeArticleResponseDto {
         Object keywordsValue = news.getArticleData() != null ? news.getArticleData().getExtraData().get("keywords") : null;
         if (keywordsValue instanceof List<?> keywordList) {
             return keywordList.stream()
-                    .filter(Map.class::isInstance)
-                    .map(Map.class::cast)
+                    .filter(java.util.Map.class::isInstance)
+                    .map(java.util.Map.class::cast)
                     .map(item -> new KeywordPayload(
                             Objects.toString(item.get("term"), ""),
                             parseCount(item.get("count"))
@@ -59,7 +62,7 @@ public class AnalyzeArticleResponseDto {
         }
 
         Object tokenCountsValue = news.getArticleData() != null ? news.getArticleData().getExtraData().get("token_counts") : null;
-        if (tokenCountsValue instanceof Map<?, ?> tokenCounts) {
+        if (tokenCountsValue instanceof java.util.Map<?, ?> tokenCounts) {
             return tokenCounts.entrySet().stream()
                     .map(entry -> new KeywordPayload(
                             Objects.toString(entry.getKey(), ""),
@@ -85,11 +88,31 @@ public class AnalyzeArticleResponseDto {
         }
     }
 
+    @Getter
+    public static class RecommendationPayload {
+        private final Long newsId;
+        private final String title;
+        private final String url;
+        private final double score;
+        private final String reason;
+
+        public RecommendationPayload(Long newsId, String title, String url, double score, String reason) {
+            this.newsId = newsId;
+            this.title = title;
+            this.url = url;
+            this.score = score;
+            this.reason = reason;
+        }
+    }
+
     private static String labelFor(BigDecimal probability) {
         if (probability == null) {
             return "검토 필요";
         }
         double value = probability.doubleValue();
+        if (value < 0) {
+            return "미분석";
+        }
         if (value >= 0.8) {
             return "광고성 높음";
         }

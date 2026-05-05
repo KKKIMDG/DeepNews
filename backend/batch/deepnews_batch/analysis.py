@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import requests
+from urllib.parse import quote_plus
 
 from .storage import fetch_unanalyzed_news, upsert_news_analysis_results
 
@@ -75,9 +76,22 @@ def analyze_with_fastapi(news_rows: list[dict[str, Any]], ai_service_url: str) -
 
 
 def _database_url_from_env() -> str:
-    database_url = (
-        __import__("os").environ.get("DATABASE_URL", "").strip()
+    os_module = __import__("os")
+    database_url = os_module.environ.get("DATABASE_URL", "").strip()
+    if database_url:
+        return database_url
+
+    host = os_module.environ.get("DB_HOST", "").strip()
+    port = os_module.environ.get("DB_PORT", "").strip()
+    name = os_module.environ.get("DB_NAME", "").strip()
+    user = os_module.environ.get("DB_USER", "").strip()
+    password = os_module.environ.get("DB_PASSWORD", "").strip()
+    sslmode = os_module.environ.get("DB_SSLMODE", "require").strip()
+
+    if not all([host, port, name, user, password]):
+        raise RuntimeError("DATABASE_URL or DB_* environment variables are required for analysis sync.")
+
+    return (
+        f"postgresql://{quote_plus(user)}:{quote_plus(password)}"
+        f"@{host}:{port}/{name}?sslmode={quote_plus(sslmode)}"
     )
-    if not database_url:
-        raise RuntimeError("DATABASE_URL is required for analysis sync.")
-    return database_url

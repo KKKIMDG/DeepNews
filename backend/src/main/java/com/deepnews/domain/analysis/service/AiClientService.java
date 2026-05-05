@@ -49,7 +49,7 @@ public class AiClientService {
                     blankToFallback(response.summary(), text),
                     response.adProbValue(),
                     response.isClickbait() != null ? response.isClickbait() : Boolean.TRUE.equals(response.isAd()),
-                    response.entities() != null ? response.entities() : List.of()
+                    response.namedEntitiesValue()
             );
         } catch (Exception exception) {
             return placeholder(title, url, text);
@@ -83,9 +83,9 @@ public class AiClientService {
         String summary = text == null ? "" : text.substring(0, Math.min(text.length(), 280));
         return new AnalysisResult(
                 summary.isBlank() ? title : summary,
-                0.99,
+                -1.0,
                 false,
-                List.of(Map.of("title", title, "url", url))
+                List.of()
         );
     }
 
@@ -110,12 +110,24 @@ public class AiClientService {
     public record AnalysisResponse(
             String summary,
             @JsonProperty("ad_prob") Double adProb,
+            @JsonProperty("ad_probability") Double adProbability,
             @JsonProperty("is_ad") Boolean isAd,
             @JsonProperty("is_clickbait") Boolean isClickbait,
-            Object entities
+            Object entities,
+            @JsonProperty("named_entities") Object namedEntities
     ) {
         public double adProbValue() {
-            return adProb == null ? 0.0 : adProb;
+            if (adProb != null) {
+                return adProb;
+            }
+            return adProbability == null ? 0.0 : adProbability;
+        }
+
+        public Object namedEntitiesValue() {
+            if (namedEntities != null) {
+                return namedEntities;
+            }
+            return entities != null ? entities : List.of();
         }
     }
 
