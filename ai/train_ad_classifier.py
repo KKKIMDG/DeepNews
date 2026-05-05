@@ -1,4 +1,3 @@
-# train_ad_classifier.py
 import json
 import torch
 import numpy as np
@@ -16,7 +15,7 @@ MODEL_NAME   = "klue/roberta-base"
 DATA_FILE    = "./output/labeled_balanced.jsonl"
 OUTPUT_DIR   = "./model_ad"
 MAX_LEN      = 512
-BATCH_SIZE   = 8      # RTX 2060 VRAM 6GB 기준
+BATCH_SIZE   = 8    
 EPOCHS       = 5
 LR           = 2e-5
 SEED         = 42
