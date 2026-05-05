@@ -1,6 +1,8 @@
 package com.deepnews.domain.news.controller;
 
 import com.deepnews.domain.analysis.service.AiClientService;
+import com.deepnews.domain.news.dto.AnalyzeArticleRequestDto;
+import com.deepnews.domain.news.dto.AnalyzeArticleResponseDto;
 import com.deepnews.domain.news.dto.NewsCrawlRequestDto;
 import com.deepnews.domain.news.service.NewsService;
 import lombok.RequiredArgsConstructor;
@@ -21,15 +23,17 @@ import java.util.Map;
 public class NewsController {
 
     private final NewsService newsService;
-    private final AiClientService aiClientService;
 
     @PostMapping("/crawl")
     public ResponseEntity<String> receiveCrawl(@RequestBody NewsCrawlRequestDto dto) {
         Long savedNewsId = newsService.saveCrawledData(dto);
 
-//        aiClientService.requestAnalysis(savedNewsId);
-
         return ResponseEntity.ok("뉴스 수집 및 분석 요청 완료 (ID: " + savedNewsId + ")");
+    }
+
+    @PostMapping("/analyze")
+    public ResponseEntity<AnalyzeArticleResponseDto> analyzeArticle(@RequestBody AnalyzeArticleRequestDto dto) {
+        return ResponseEntity.ok(newsService.analyzeOrGet(dto));
     }
 
     @PostMapping("/crawl/bulk")

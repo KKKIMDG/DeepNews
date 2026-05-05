@@ -13,7 +13,8 @@
   "host_permissions": [
     "https://news.naver.com/*",
     "https://n.news.naver.com/*",
-    "https://api.example.com/*"
+    "http://127.0.0.1:8080/*",
+    "http://localhost:8080/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js",

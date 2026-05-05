@@ -3,9 +3,13 @@ package com.deepnews.domain.keyword.repository;
 import com.deepnews.domain.keyword.entity.Keyword;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 
 public interface KeywordRepository extends JpaRepository<Keyword, Long> {
 
     Optional<Keyword> findByWord(String word);
+
+    List<Keyword> findAllByWordIn(Collection<String> words);
 }

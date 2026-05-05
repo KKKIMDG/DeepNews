@@ -1,19 +1,5 @@
 const ARTICLE_SELECTORS = {
-  title: [
-    ".media_end_head_headline",
-    "#title_area",
-    "h2#title_area",
-    ".end_tit"
-  ],
-  body: [
-    "#dic_area",
-    "#newsct_article",
-    ".newsct_article"
-  ],
-  titleMeta: [
-    'meta[property="og:title"]',
-    'meta[name="twitter:title"]'
-  ]
+  body: ["#dic_area", "#newsct_article", ".newsct_article"]
 };
 
 const HIGHLIGHT_CLASS = "deepnews-highlight";
@@ -42,18 +28,12 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 function extractArticle() {
-  const title =
-    queryFirstText(ARTICLE_SELECTORS.title) ||
-    queryFirstMetaContent(ARTICLE_SELECTORS.titleMeta);
   const body = queryFirstText(ARTICLE_SELECTORS.body);
-
-  if (!title || !body) {
+  if (!body) {
     return null;
   }
 
   return {
-    title,
-    body,
     url: window.location.href
   };
 }
@@ -65,18 +45,6 @@ function queryFirstText(selectors) {
 
     if (text) {
       return text;
-    }
-  }
-
-  return "";
-}
-
-function queryFirstMetaContent(selectors) {
-  for (const selector of selectors) {
-    const content = document.querySelector(selector)?.getAttribute("content")?.trim();
-
-    if (content) {
-      return content;
     }
   }
 

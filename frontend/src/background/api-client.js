@@ -1,4 +1,4 @@
-const BACKEND_BASE_URL = "https://api.example.com";
+const BACKEND_BASE_URL = "http://127.0.0.1:8080/api/v1/news";
 
 async function safeJson(response) {
   if (!response.ok) {
@@ -8,7 +8,7 @@ async function safeJson(response) {
   return response.json();
 }
 
-export async function requestBackendAnalysis(article, keywords) {
+export async function requestBackendAnalysis(article) {
   try {
     const response = await fetch(`${BACKEND_BASE_URL}/analyze`, {
       method: "POST",
@@ -16,25 +16,19 @@ export async function requestBackendAnalysis(article, keywords) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        article,
-        keywords
+        url: article.url
       })
     });
 
     return await safeJson(response);
   } catch {
     return {
-      summary: `${article.title} 기사의 핵심 키워드는 ${keywords
-        .slice(0, 3)
-        .map((item) => item.term)
-        .join(", ")}입니다.`,
+      article,
+      keywords: [],
+      summary: "기사 분석 중 문제가 발생했습니다.",
       recommendations: [
         {
-          title: "관련 기사 1",
-          url: article.url
-        },
-        {
-          title: "관련 기사 2",
+          title: "원문 기사",
           url: article.url
         }
       ],

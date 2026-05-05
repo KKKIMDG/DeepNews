@@ -47,4 +47,9 @@ public class News {
     @OneToMany(mappedBy = "news", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<ArticleKeyword> articleKeywords = new ArrayList<>();
+
+    public void updateArticle(String title, ArticleData articleData) {
+        this.title = title;
+        this.articleData = articleData;
+    }
 }

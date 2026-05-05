@@ -9,7 +9,6 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.ZonedDateTime;
 
 @Entity
 @Table(name = "news_analysis")
@@ -45,4 +44,18 @@ public class NewsAnalysis {
     @CreatedDate
     @Column(updatable = false)
     private LocalDateTime analyzedAt;
+
+    public NewsAnalysis updateFrom(
+            String summary,
+            BigDecimal adProbability,
+            Boolean isClickbait,
+            String namedEntities
+    ) {
+        this.summary = summary;
+        this.adProbability = adProbability;
+        this.isClickbait = isClickbait;
+        this.namedEntities = namedEntities;
+        this.analyzedAt = LocalDateTime.now();
+        return this;
+    }
 }

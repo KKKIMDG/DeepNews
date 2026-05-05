@@ -1,5 +1,5 @@
 import { requestBackendAnalysis } from "./api-client.js";
-import { buildHighlightPayload, extractKeywords } from "./keyword-analysis.js";
+import { buildHighlightPayload } from "./keyword-analysis.js";
 import {
   ANALYSIS_STATUS,
   DEFAULT_ANALYSIS,
@@ -56,9 +56,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function analyzeArticle(article, sender) {
-  const bodyText = article?.body || "";
-  const keywords = extractKeywords(`${article?.title || ""} ${bodyText}`);
-
   await chrome.storage.local.set({
     [STORAGE_KEY]: {
       ...DEFAULT_ANALYSIS,
@@ -71,7 +68,7 @@ async function analyzeArticle(article, sender) {
   let backendResult;
 
   try {
-    backendResult = await requestBackendAnalysis(article, keywords);
+    backendResult = await requestBackendAnalysis(article);
   } catch (error) {
     await chrome.storage.local.set({
       [STORAGE_KEY]: {
@@ -85,9 +82,10 @@ async function analyzeArticle(article, sender) {
     throw error;
   }
 
+  const keywords = backendResult.keywords || [];
   const analysis = {
     status: ANALYSIS_STATUS.READY,
-    article,
+    article: backendResult.article || article,
     keywords,
     summary: backendResult.summary,
     recommendations: backendResult.recommendations,
