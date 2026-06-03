@@ -1,4 +1,4 @@
-const BACKEND_BASE_URL = "http://127.0.0.1:8080/api/v1/news";
+const BACKEND_BASE_URL = "http://127.0.0.1:8000/api/v1/news";
 
 async function safeJson(response) {
   if (!response.ok) {

@@ -5,19 +5,24 @@ const ARTICLE_SELECTORS = {
 const HIGHLIGHT_CLASS = "deepnews-highlight";
 const ANALYZE_ARTICLE = "ANALYZE_ARTICLE";
 
-bootstrap();
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrap, { once: true });
+} else {
+  bootstrap();
+}
 
 function bootstrap() {
   injectHighlightStyle();
 
-  const article = extractArticle();
-  if (!article) {
+  if (!isSupportedArticleUrl(window.location.href)) {
     return;
   }
 
   chrome.runtime.sendMessage({
     type: ANALYZE_ARTICLE,
-    payload: article
+    payload: {
+      url: window.location.href
+    }
   });
 }
 
@@ -26,17 +31,6 @@ chrome.runtime.onMessage.addListener((message) => {
     highlightKeywords(message.payload?.keywords || []);
   }
 });
-
-function extractArticle() {
-  const body = queryFirstText(ARTICLE_SELECTORS.body);
-  if (!body) {
-    return null;
-  }
-
-  return {
-    url: window.location.href
-  };
-}
 
 function queryFirstText(selectors) {
   for (const selector of selectors) {
@@ -113,4 +107,16 @@ function injectHighlightStyle() {
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isSupportedArticleUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const isNaverNewsHost =
+      parsed.hostname === "news.naver.com" || parsed.hostname === "n.news.naver.com";
+
+    return isNaverNewsHost && /\/article\//.test(parsed.pathname);
+  } catch {
+    return false;
+  }
 }
