@@ -16,6 +16,10 @@ load_dotenv(PROJECT_ROOT / "backend" / ".env")
 @dataclass(frozen=True)
 class Settings:
     database_url: str
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
+    mind_train_dir: Path = PROJECT_ROOT / "MINDlarge_train"
+    recommendation_runtime_dir: Path = PROJECT_ROOT / "backend" / "runtime" / "recommendation"
     ad_model_dir: Path = Path("/home/capstone/model_ad")
     summary_base_model: str = "google/gemma-2-9b-it"
     summary_adapter_dir: Path = Path("/home/capstone/ai/adapter_summary/")
@@ -54,7 +58,18 @@ def resolve_database_url() -> str:
         auth = f"{user}:{password}@" if user else ""
         return f"postgresql://{auth}{host}:{port}/{name}?sslmode={sslmode}"
 
-    raise RuntimeError("DATABASE_URL is required. Put it in the environment or .env file.")
+    return ""
 
 
-settings = Settings(database_url=resolve_database_url())
+settings = Settings(
+    database_url=resolve_database_url(),
+    naver_client_id=os.getenv("NAVER_CLIENT_ID", "").strip(),
+    naver_client_secret=os.getenv("NAVER_CLIENT_SECRET", "").strip(),
+    mind_train_dir=Path(os.getenv("MIND_TRAIN_DIR", str(PROJECT_ROOT / "MINDlarge_train"))),
+    recommendation_runtime_dir=Path(
+        os.getenv(
+            "RECOMMENDATION_RUNTIME_DIR",
+            str(PROJECT_ROOT / "backend" / "runtime" / "recommendation"),
+        )
+    ),
+)

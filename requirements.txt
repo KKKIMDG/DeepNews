@@ -1,6 +1,8 @@
 requests
 beautifulsoup4
 pandas
+fastapi
+uvicorn
 newspaper3k
 lxml[html_clean]
 lxml_html_clean
@@ -9,3 +11,7 @@ JPype1
 psycopg2-binary
 python-dotenv
 SQLAlchemy
+numpy
+scipy
+scikit-learn
+python-dateutil

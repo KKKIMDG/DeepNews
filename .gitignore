@@ -17,5 +17,6 @@ model_ad/
 backend/batch/.venv/
 backend/batch/runtime/
 backend/batch/logs/
+backend/runtime/
 .venv/
 .vscode/
