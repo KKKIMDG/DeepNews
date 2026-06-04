@@ -1,4 +1,4 @@
-const BACKEND_BASE_URL = "http://127.0.0.1:8000/api/v1/news";
+const RECOMMENDATION_BASE_URL = "http://127.0.0.1:8011/api/v1/recommendations";
 
 async function safeJson(response) {
   if (!response.ok) {
@@ -10,31 +10,39 @@ async function safeJson(response) {
 
 export async function requestBackendAnalysis(article) {
   try {
-    const response = await fetch(`${BACKEND_BASE_URL}/analyze`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        url: article.url
-      })
-    });
+    const response = await fetch(`${RECOMMENDATION_BASE_URL}/mind-svd?limit=10`);
+    const recommendationResult = await safeJson(response);
 
-    return await safeJson(response);
+    return {
+      article,
+      keywords: [
+        { term: "MIND", count: 3 },
+        { term: "SVD", count: 2 },
+        { term: "추천", count: 2 },
+        { term: "네이버", count: 1 }
+      ],
+      summary:
+        "MIND 데이터셋 기반 SVD 협업 필터링 결과를 네이버 뉴스 메타데이터로 매핑해 추천합니다.",
+      recommendations: recommendationResult.items || [],
+      adLikelihood: {
+        label: "추천 데모",
+        score: 0
+      }
+    };
   } catch {
     return {
       article,
       keywords: [],
-      summary: "기사 분석 중 문제가 발생했습니다.",
+      summary: "추천 API 연결 중 문제가 발생했습니다. 서버가 켜져 있는지 확인해 주세요.",
       recommendations: [
         {
-          title: "원문 기사",
+          title: "현재 기사",
           url: article.url
         }
       ],
       adLikelihood: {
-        label: "검토 필요",
-        score: 0.99
+        label: "연결 필요",
+        score: 0
       }
     };
   }

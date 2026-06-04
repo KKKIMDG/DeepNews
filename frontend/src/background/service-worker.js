@@ -108,11 +108,12 @@ async function analyzeArticle(article, sender) {
 }
 
 async function syncAnalysisForTab(tab) {
-  if (isSupportedArticleUrl(tab?.url)) {
+  if (!isSupportedArticleUrl(tab?.url)) {
+    await chrome.storage.local.set({ [STORAGE_KEY]: DEFAULT_ANALYSIS });
     return;
   }
 
-  await chrome.storage.local.set({ [STORAGE_KEY]: DEFAULT_ANALYSIS });
+  await analyzeArticle({ url: tab.url }, { tab });
 }
 
 function isSupportedArticleUrl(url) {
