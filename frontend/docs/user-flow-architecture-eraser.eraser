@@ -1,0 +1,151 @@
+direction right
+
+User [label: "사용자", color: gray]
+
+Browser [label: "크롬", color: gray] {
+  NewsPage [label: "네이버 기사"]
+  SidePanelShell [label: "사이드패널"]
+}
+
+Extension [label: "DeepNews 확장 프로그램", color: blue] {
+  Manifest [label: "manifest.json\n실행 설정"]
+
+  PanelLayer [label: "패널 UI\nsrc/panel", color: blue] {
+    PanelHtml [label: "panel.html\n화면 구조"]
+    PanelJs [label: "panel.js\nUI 제어"]
+  }
+
+  ContentLayer [label: "기사 페이지\nsrc/content", color: blue] {
+    ContentScript [label: "content-script.js\nURL 추출 / 팝업 표시"]
+    OverlayRenderer [label: "팝업 렌더링"]
+  }
+
+  BackgroundLayer [label: "백그라운드\nsrc/background", color: blue] {
+    ServiceWorker [label: "service-worker.js\n흐름 제어 / 데이터 변환"]
+    ApiClient [label: "api-client.js\nAPI 요청"]
+  }
+
+  SharedLayer [label: "공통 상수", color: blue] {
+    Constants [label: "constants.js\n키 / 메시지 / 기본값"]
+  }
+}
+
+ChromeApis [label: "Chrome API", color: purple] {
+  RuntimeApi [label: "runtime\n메시지"]
+  TabsApi [label: "tabs\n탭 제어"]
+  StorageApi [label: "storage\n상태 저장"]
+  ActionApi [label: "action\n아이콘 클릭"]
+  SidePanelApi [label: "sidePanel\n패널 열기"]
+}
+
+StorageModel [label: "저장소", color: orange] {
+  AuthStorage [label: "deepnews.auth\n로그인 상태"]
+  AnalysisStorage [label: "deepnews.latestAnalysis\n분석 결과"]
+}
+
+Backend [label: "백엔드", color: green] {
+  AuthApi [label: "인증 API\n/login /signup"]
+  AnalyzeApi [label: "분석 API\n/analyze"]
+  DevAuth [label: "테스트 계정\ntest@gmail.com / 1234"]
+  DevAnalysis [label: "임시 분석 결과"]
+}
+
+Manifest > ServiceWorker: "백그라운드 등록"
+Manifest > ContentScript: "기사 페이지 주입"
+Manifest > PanelHtml: "패널 등록"
+Manifest > ActionApi: "아이콘 동작 등록"
+
+PanelHtml > PanelJs: "패널 스크립트 실행"
+ContentScript > OverlayRenderer: "SHOW_* 수신"
+
+User > ActionApi: "1. 아이콘 클릭"
+ActionApi > ServiceWorker: "2. 클릭 이벤트"
+ServiceWorker > SidePanelApi: "3. 패널 열기"
+SidePanelApi > SidePanelShell: "4. 패널 표시"
+SidePanelShell > PanelHtml: "5. panel.html 로드"
+PanelHtml > PanelJs: "6. panel.js 실행"
+
+PanelJs > RuntimeApi: "7. 분석 상태 요청"
+RuntimeApi > ServiceWorker: "GET_LATEST_ANALYSIS"
+ServiceWorker > StorageApi: "분석 결과 조회"
+StorageApi > AnalysisStorage: "deepnews.latestAnalysis"
+AnalysisStorage > PanelJs: "분석 상태 반환"
+
+PanelJs > RuntimeApi: "8. 로그인 상태 요청"
+RuntimeApi > ServiceWorker: "GET_AUTH_STATE"
+ServiceWorker > StorageApi: "로그인 상태 조회"
+StorageApi > AuthStorage: "deepnews.auth"
+AuthStorage > PanelJs: "로그인 상태 반환"
+
+PanelJs > PanelHtml: "9. 비로그인 화면"
+PanelHtml > User: "로그인/회원가입만 표시"
+
+User > PanelJs: "10. 로그인 또는 회원가입"
+PanelJs > PanelJs: "입력값 검증"
+PanelJs > RuntimeApi: "LOGIN / SIGNUP"
+
+RuntimeApi > ServiceWorker: "11. 인증 메시지 수신"
+ServiceWorker > ApiClient: "login() / signup()"
+ApiClient > DevAuth: "테스트 계정 검증"
+ApiClient > AuthApi: "실제 인증 요청"
+AuthApi > ApiClient: "token, user"
+DevAuth > ApiClient: "dev token"
+ApiClient > ServiceWorker: "인증 결과 반환"
+
+ServiceWorker > StorageApi: "12. 인증 상태 저장"
+StorageApi > AuthStorage: "signed_in"
+StorageApi > PanelJs: "상태 변경 알림"
+PanelJs > PanelHtml: "분석 화면 표시"
+
+ServiceWorker > ServiceWorker: "13. 현재 탭 분석 시작"
+ServiceWorker > TabsApi: "활성 탭 조회"
+TabsApi > ServiceWorker: "tab.url"
+ServiceWorker > ServiceWorker: "지원 URL 확인"
+
+NewsPage > ContentScript: "14. 기사 페이지 로드"
+ContentScript > ContentScript: "extractArticleUrl()"
+ContentScript > RuntimeApi: "ANALYZE_ARTICLE { url }"
+RuntimeApi > ServiceWorker: "분석 요청 수신"
+
+ServiceWorker > StorageApi: "15. 로그인 여부 확인"
+StorageApi > AuthStorage: "token 확인"
+AuthStorage > ServiceWorker: "token 없음"
+ServiceWorker > AnalysisStorage: "분석 차단"
+AuthStorage > ServiceWorker: "token 있음"
+ServiceWorker > AnalysisStorage: "loading 저장"
+ServiceWorker > ApiClient: "requestBackendAnalysis(url, token)"
+ApiClient > AnalyzeApi: "POST /analyze"
+AnalyzeApi > ApiClient: "분석 결과"
+ApiClient > DevAnalysis: "실패 시 임시 결과"
+ApiClient > ServiceWorker: "backendResult"
+ServiceWorker > AnalysisStorage: "ready 저장"
+AnalysisStorage > PanelJs: "결과 변경 알림"
+PanelJs > PanelHtml: "16. 결과 렌더링"
+
+PanelJs > PanelHtml: "키워드 표시"
+PanelJs > PanelHtml: "요약 표시"
+PanelJs > PanelHtml: "추천 표시"
+PanelJs > PanelHtml: "광고성 표시"
+
+User > PanelJs: "17. 팝업 버튼 클릭"
+PanelJs > PanelJs: "로그인 / ready 확인"
+PanelJs > TabsApi: "현재 탭 조회"
+TabsApi > PanelJs: "tab.id"
+PanelJs > TabsApi: "SHOW_* 전송"
+TabsApi > ContentScript: "메시지 전달"
+ContentScript > OverlayRenderer: "팝업 생성"
+OverlayRenderer > NewsPage: "기사 위에 표시"
+
+User > PanelJs: "18. 로그아웃"
+PanelJs > RuntimeApi: "LOGOUT"
+RuntimeApi > ServiceWorker: "로그아웃 처리"
+ServiceWorker > StorageApi: "상태 초기화"
+StorageApi > AuthStorage: "signed_out"
+StorageApi > AnalysisStorage: "분석 초기화"
+StorageApi > PanelJs: "상태 변경 알림"
+PanelJs > PanelHtml: "로그인 화면 복귀"
+
+User > TabsApi: "19. 탭 이동"
+TabsApi > ServiceWorker: "탭 변경 감지"
+ServiceWorker > ServiceWorker: "URL 확인"
+ServiceWorker > AnalysisStorage: "필요 시 초기화"

@@ -6,7 +6,7 @@
     <title>DeepNews Analyzer</title>
     <link rel="stylesheet" href="./panel.css" />
   </head>
-  <body>
+  <body data-auth="signed-out">
     <main class="panel">
       <header class="hero">
         <div class="hero-top">
@@ -19,33 +19,71 @@
             <span>다크모드</span>
           </label>
         </div>
-        <p class="subcopy">키워드, AI 요약, 유사 기사, 광고성 판단 결과를 한눈에 확인합니다.</p>
+        <p class="subcopy">키워드, AI 요약, 추천 기사, 광고성 판단 결과를 한눈에 확인합니다.</p>
       </header>
 
-      <section class="card">
-        <h2>핵심 키워드</h2>
-        <div id="keyword-list" class="keyword-list"></div>
+      <section class="card auth-card">
+        <div class="auth-header">
+          <div>
+            <h2>로그인</h2>
+            <p id="auth-status" class="auth-status">로그인 상태를 확인하는 중입니다.</p>
+          </div>
+          <button id="logout-button" class="inline-action auth-logout" type="button" hidden>
+            로그아웃
+          </button>
+        </div>
+
+        <form id="auth-form" class="auth-form">
+          <div class="auth-mode" role="tablist" aria-label="인증 방식">
+            <button id="login-mode" class="auth-mode-button active" type="button">로그인</button>
+            <button id="signup-mode" class="auth-mode-button" type="button">회원가입</button>
+          </div>
+
+          <label class="field">
+            <span>이메일</span>
+            <input id="auth-email" type="email" autocomplete="email" required />
+          </label>
+
+          <label class="field">
+            <span>비밀번호</span>
+            <input id="auth-password" type="password" autocomplete="current-password" required />
+          </label>
+
+          <button id="auth-submit" class="auth-submit" type="submit">로그인</button>
+          <p class="auth-hint">이메일:test@gmail.com / 비밀번호:1234</p>
+          <p id="auth-message" class="auth-message" role="status"></p>
+        </form>
       </section>
 
-      <section class="card">
-        <h2>키워드 빈도</h2>
-        <div id="keyword-chart" class="chart"></div>
-      </section>
+      <div id="analysis-content" class="analysis-content" hidden>
+        <section class="card">
+          <h2>핵심 키워드</h2>
+          <button id="show-keyword-popup" class="inline-action" type="button">팝업 띄우기</button>
+          <div id="keyword-list" class="keyword-list"></div>
+        </section>
 
-      <section class="card">
-        <h2>AI 요약</h2>
-        <p id="summary" class="summary">분석 데이터를 불러오는 중입니다.</p>
-      </section>
+        <section class="card">
+          <h2>키워드 빈도</h2>
+          <button id="show-keyword-chart-popup" class="inline-action" type="button">팝업 띄우기</button>
+          <div id="keyword-chart" class="chart"></div>
+        </section>
 
-      <section class="card">
-        <h2>유사 기사 추천</h2>
-        <ul id="recommendations" class="recommendations"></ul>
-      </section>
+        <section class="card">
+          <h2>AI 요약</h2>
+          <p id="summary" class="summary">분석 데이터를 불러오는 중입니다.</p>
+        </section>
 
-      <section class="card">
-        <h2>광고성 판단</h2>
-        <p id="ad-likelihood" class="ad-likelihood"></p>
-      </section>
+        <section class="card">
+          <h2>추천 기사</h2>
+          <ul id="recommendations" class="recommendations"></ul>
+        </section>
+
+        <section class="card">
+          <h2>광고성 판단</h2>
+          <button id="show-ad-popup" class="inline-action" type="button">팝업 띄우기</button>
+          <p id="ad-likelihood" class="ad-likelihood"></p>
+        </section>
+      </div>
     </main>
 
     <script type="module" src="./panel.js"></script>

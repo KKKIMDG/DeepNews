@@ -1,0 +1,52 @@
+direction right
+
+User [label: "사용자", color: gray]
+
+FrontendScope [label: "내 구현 범위: Chrome Extension Frontend", color: blue] {
+  AuthLane [label: "인증 UI 영역", color: blue] {
+    AuthUI [label: "회원가입 / 로그인 UI\n아이디·비밀번호 입력\n로그인 / 로그아웃 상태 표시"]
+    AuthStateUI [label: "인증 상태 표시\n로그인됨 / 로그인 필요"]
+  }
+
+  ArticleLane [label: "기사 페이지 영역", color: blue] {
+    ContentScript [label: "Content Script\n기사 제목·본문 추출\n본문 키워드 하이라이트"]
+    OverlayUI [label: "페이지 오버레이 UI\n요약 / 키워드 / 차트 / 광고성 점수 팝업"]
+  }
+
+  PanelLane [label: "사이드패널 영역", color: blue] {
+    PanelUI [label: "Panel UI\nAI 요약 / 키워드 / 차트\n추천 기사 / 광고성 점수 표시"]
+    InteractionUI [label: "사용자 인터랙션\n팝업 열기 / 닫기\n전체 표시 / 전체 숨김\n클릭 / 저장 / 숨김"]
+  }
+
+  WorkerLane [label: "상태·메시지 제어 영역", color: blue] {
+    BackgroundWorker [label: "Background Worker\n프론트 메시지 중계\n분석 요청 제어\n로그인 상태 / 토큰 관리"]
+    FrontStorage [label: "chrome.storage.local\n인증 상태 / 분석 결과\n테마 / 오버레이 위치 저장"]
+  }
+}
+
+ExternalAPI [label: "연동 대상: Backend / AI API", color: green] {
+  AuthAPI [label: "Auth API\n회원가입 / 로그인 / 로그아웃"]
+  AnalysisAPI [label: "Analysis API\nAI 요약 / 추천 / 광고성 판단 결과 반환"]
+}
+
+User > AuthUI: "1. 회원가입 / 로그인"
+AuthUI > BackgroundWorker: "2. 인증 요청 전달"
+BackgroundWorker > AuthAPI: "3. 인증 API 호출"
+AuthAPI > BackgroundWorker: "4. 사용자 정보 / 토큰 반환"
+BackgroundWorker > FrontStorage: "5. 인증 상태 저장"
+FrontStorage > AuthStateUI: "6. 로그인 상태 UI 갱신"
+
+User > ContentScript: "7. 네이버 뉴스 기사 페이지 열기"
+ContentScript > BackgroundWorker: "8. 기사 제목·본문·URL 전달"
+BackgroundWorker > FrontStorage: "9. 분석 중 상태 저장"
+BackgroundWorker > AnalysisAPI: "10. 기사 분석 요청"
+AnalysisAPI > BackgroundWorker: "11. AI 요약 / 키워드 / 추천 / 광고성 점수 반환"
+BackgroundWorker > FrontStorage: "12. 분석 결과 저장"
+
+FrontStorage > PanelUI: "13. 사이드패널 결과 갱신"
+PanelUI > InteractionUI: "14. 팝업 표시 버튼 클릭"
+InteractionUI > BackgroundWorker: "15. 표시 / 숨김 메시지 요청"
+BackgroundWorker > ContentScript: "16. 오버레이 / 하이라이트 표시 요청"
+ContentScript > OverlayUI: "17. 페이지 위 시각화 렌더링"
+OverlayUI > FrontStorage: "18. 오버레이 위치 저장"
+InteractionUI > BackgroundWorker: "19. 클릭 / 저장 / 숨김 피드백 전달"
