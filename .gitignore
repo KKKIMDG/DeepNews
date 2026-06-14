@@ -18,4 +18,7 @@ backend/batch/.venv/
 backend/batch/runtime/
 backend/batch/logs/
 .venv/
+.venv-mps/
 .vscode/
+model/
+hs_err_pid*.log

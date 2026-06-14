@@ -16,9 +16,9 @@ load_dotenv(PROJECT_ROOT / "backend" / ".env")
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    ad_model_dir: Path = Path("/home/capstone/model_ad")
-    summary_base_model: str = "google/gemma-2-9b-it"
-    summary_adapter_dir: Path = Path("/home/capstone/ai/adapter_summary/")
+    ad_model_dir: Path = PROJECT_ROOT / "model" / "ad_model"
+    summary_base_model: Path = PROJECT_ROOT / "model" / "gemma-2-9b-it"
+    summary_adapter_dir: Path = PROJECT_ROOT / "model" / "summary_model"
     max_len: int = 512
     summary_max_tokens: int = 200
     keyword_limit: int = 8

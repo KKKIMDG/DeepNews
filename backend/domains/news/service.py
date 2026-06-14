@@ -127,7 +127,7 @@ def extract_keywords_from_article_data(article_data: dict[str, Any]) -> list[Key
 
 def serialize_analysis_response(news: News, analysis: NewsAnalysis, cached: bool) -> AnalyzeArticleApiResponse:
     article_data = news.article_data or {}
-    score = float(analysis.ad_probability or -1.0)
+    score = -1.0 if analysis.ad_probability is None else float(analysis.ad_probability)
     return AnalyzeArticleApiResponse(
         newsId=news.id,
         cached=cached,
