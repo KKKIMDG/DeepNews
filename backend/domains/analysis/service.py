@@ -7,15 +7,18 @@ from ...config import settings
 try:
     import torch
     import torch.nn.functional as F
-    from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
 except Exception:
     torch = None
     F = None
-    PeftModel = None
     AutoModelForCausalLM = None
     AutoModelForSequenceClassification = None
     AutoTokenizer = None
+
+try:
+    from peft import PeftModel
+except Exception:
+    PeftModel = None
 
 
 device = torch.device("cuda" if torch and torch.cuda.is_available() else "cpu") if torch else "cpu"
@@ -46,18 +49,31 @@ SUMMARY_MODEL_READY = False
 
 if torch and AutoTokenizer and AutoModelForCausalLM and PeftModel and settings.summary_adapter_dir.exists():
     try:
-        summary_tokenizer = AutoTokenizer.from_pretrained(settings.summary_base_model)
+        summary_tokenizer = AutoTokenizer.from_pretrained(
+            str(settings.summary_base_model),
+            local_files_only=True,
+        )
         summary_tokenizer.pad_token = summary_tokenizer.eos_token
 
+        model_kwargs = {"local_files_only": True}
+        if torch.cuda.is_available():
+            model_kwargs["dtype"] = torch.bfloat16
+            model_kwargs["device_map"] = "auto"
+
         base_model = AutoModelForCausalLM.from_pretrained(
-            settings.summary_base_model,
-            dtype=torch.bfloat16,
-            device_map="cuda:0",
+            str(settings.summary_base_model),
+            **model_kwargs,
         )
+        if not torch.cuda.is_available():
+            base_model.to(device)
         summary_model = PeftModel.from_pretrained(base_model, str(settings.summary_adapter_dir))
+        if not torch.cuda.is_available():
+            summary_model.to(device)
         summary_model.eval()
         SUMMARY_MODEL_READY = True
-        print(f"요약 모델 로드 완료: {settings.summary_adapter_dir}")
+        print(
+            f"요약 모델 로드 완료: base={settings.summary_base_model}, adapter={settings.summary_adapter_dir}"
+        )
     except Exception as exception:
         print(f"요약 모델 로드 실패: {exception}")
 else:
