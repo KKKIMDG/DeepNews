@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class AnalyzeArticleRequest(BaseModel):
     url: str
+    clientUserId: str | None = None
 
 
 class KeywordPayload(BaseModel):
@@ -30,7 +31,7 @@ class AnalyzeArticleApiResponse(BaseModel):
     article: ArticlePayload
     keywords: list[KeywordPayload]
     summary: str
-    recommendations: list[dict[str, str]]
+    recommendations: list[dict[str, Any]]
     adLikelihood: AdLikelihoodPayload
 
 

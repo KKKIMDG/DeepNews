@@ -1,0 +1,31 @@
+최신 dev 브랜치에 협업 필터링 통합 작업이 들어간 브랜치를 병합해 주세요.
+
+병합 원칙:
+- dev 브랜치의 Python/FastAPI 백엔드 구조를 우선합니다.
+- 과거 Java/Spring 기반 협업 필터링 파일은 그대로 가져오지 않습니다.
+- 협업 필터링 개념은 backend/domains/recommendation 도메인으로 유지합니다.
+- MINDlarge 원본 ZIP/폴더는 절대 Git에 포함하지 않습니다.
+
+확인할 핵심 파일:
+- .gitignore
+- backend/sql/001_schema.sql
+- backend/main.py
+- backend/domains/news/schemas.py
+- backend/domains/news/router.py
+- backend/domains/news/service.py
+- backend/domains/recommendation/schemas.py
+- backend/domains/recommendation/service.py
+- backend/domains/recommendation/router.py
+
+병합 후 확인 사항:
+1. /api/v1/news/analyze 응답에 recommendations 필드가 유지되는지 확인합니다.
+2. /api/v1/recommendations API가 추천 목록을 반환하는지 확인합니다.
+3. /api/v1/recommendations/interactions API가 사용자 행동을 기록하는지 확인합니다.
+4. news_interaction 테이블 생성 SQL이 backend/sql/001_schema.sql에 포함되어 있는지 확인합니다.
+5. 추천 데이터가 부족해도 키워드 유사도 또는 최신 뉴스 fallback으로 정상 응답하는지 확인합니다.
+6. MINDlarge_train, MINDlarge_dev, MINDlarge_test, MINDlarge_*.zip 파일이 staging에 포함되지 않았는지 확인합니다.
+7. 프론트엔드에서 recommendations의 title/url 필드를 계속 렌더링할 수 있는지 확인합니다.
+
+발표용 조건:
+- MIND 원본 데이터가 없어도 서버가 실행되고 추천 API가 응답해야 합니다.
+- 실제 협업 필터링 데이터가 부족하면 fallback 추천으로 보여주기식 동작이 가능해야 합니다.

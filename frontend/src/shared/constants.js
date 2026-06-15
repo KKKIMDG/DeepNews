@@ -1,6 +1,7 @@
 export const STORAGE_KEY = "deepnews.latestAnalysis";
 export const THEME_STORAGE_KEY = "deepnews.theme";
 export const AUTH_STORAGE_KEY = "deepnews.auth";
+export const CLIENT_USER_ID_STORAGE_KEY = "deepnews.clientUserId";
 export const OVERLAY_STATE_STORAGE_KEY = "deepnews.openOverlays";
 
 export const MESSAGE_TYPES = {

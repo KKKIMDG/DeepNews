@@ -22,3 +22,7 @@ backend/batch/logs/
 .vscode/
 model/
 hs_err_pid*.log
+
+# Local MIND dataset files are too large for GitHub and optional for demo runs.
+MINDlarge_*/
+MINDlarge_*.zip

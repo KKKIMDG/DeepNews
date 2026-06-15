@@ -23,7 +23,7 @@ def receive_bulk_crawl(payloads: list[NewsCrawlRequest]):
 @router.post("/analyze", response_model=AnalyzeArticleApiResponse)
 def analyze_article_api(req: AnalyzeArticleRequest):
     try:
-        return analyze_or_get(req.url)
+        return analyze_or_get(req.url, req.clientUserId)
     except HTTPException:
         raise
     except Exception as exception:

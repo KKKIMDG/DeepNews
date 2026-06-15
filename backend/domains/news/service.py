@@ -6,6 +6,7 @@ from ...database import get_session
 from ..analysis.service import analyze_article
 from ..crawl.schemas import CrawlResponse
 from ..crawl.service import crawl_article, limit_token_counts
+from ..recommendation.service import recommend_for_article, record_interaction
 from .models import News, NewsAnalysis
 from . import repository
 from .schemas import (
@@ -125,25 +126,47 @@ def extract_keywords_from_article_data(article_data: dict[str, Any]) -> list[Key
     return []
 
 
-def serialize_analysis_response(news: News, analysis: NewsAnalysis, cached: bool) -> AnalyzeArticleApiResponse:
+def serialize_analysis_response(
+    news: News,
+    analysis: NewsAnalysis,
+    cached: bool,
+    client_user_id: str | None = None,
+) -> AnalyzeArticleApiResponse:
     article_data = news.article_data or {}
     score = -1.0 if analysis.ad_probability is None else float(analysis.ad_probability)
+    recommendations = recommend_for_article(
+        current_news_id=news.id,
+        client_user_id=client_user_id,
+        limit=5,
+    )
     return AnalyzeArticleApiResponse(
         newsId=news.id,
         cached=cached,
         article=ArticlePayload(title=news.title, url=news.url),
         keywords=extract_keywords_from_article_data(article_data),
         summary=analysis.summary or "",
-        recommendations=[{"title": news.title, "url": news.url}],
+        recommendations=recommendations,
         adLikelihood=AdLikelihoodPayload(label=ad_label_for(score), score=score),
     )
 
 
-def analyze_or_get(url: str) -> AnalyzeArticleApiResponse:
+def analyze_or_get(url: str, client_user_id: str | None = None) -> AnalyzeArticleApiResponse:
     with get_session() as session:
         existing_news = repository.fetch_news_by_url(session, url)
         if existing_news and existing_news.analysis:
-            return serialize_analysis_response(existing_news, existing_news.analysis, cached=True)
+            if client_user_id:
+                record_interaction(
+                    client_user_id=client_user_id,
+                    news_id=existing_news.id,
+                    interaction_type="VIEW",
+                    session=session,
+                )
+            return serialize_analysis_response(
+                existing_news,
+                existing_news.analysis,
+                cached=True,
+                client_user_id=client_user_id,
+            )
 
         crawl_result = crawl_article(url)
         article_data = build_article_data_from_analysis(crawl_result)
@@ -160,4 +183,12 @@ def analyze_or_get(url: str) -> AnalyzeArticleApiResponse:
             named_entities=analysis_result["named_entities"],
         )
 
-        return serialize_analysis_response(news, analysis, cached=False)
+        if client_user_id:
+            record_interaction(
+                client_user_id=client_user_id,
+                news_id=news.id,
+                interaction_type="VIEW",
+                session=session,
+            )
+
+        return serialize_analysis_response(news, analysis, cached=False, client_user_id=client_user_id)

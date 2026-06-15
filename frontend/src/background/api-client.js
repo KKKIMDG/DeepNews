@@ -10,7 +10,7 @@ async function safeJson(response) {
   return response.json();
 }
 
-export async function requestBackendAnalysis(url, token = "") {
+export async function requestBackendAnalysis(url, token = "", clientUserId = "") {
   try {
     const headers = {
       "Content-Type": "application/json"
@@ -24,7 +24,8 @@ export async function requestBackendAnalysis(url, token = "") {
       method: "POST",
       headers,
       body: JSON.stringify({
-        url
+        url,
+        clientUserId
       })
     });
 

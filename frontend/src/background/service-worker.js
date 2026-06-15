@@ -3,6 +3,7 @@ import { buildHighlightPayload } from "./keyword-analysis.js";
 import {
   ANALYSIS_STATUS,
   AUTH_STORAGE_KEY,
+  CLIENT_USER_ID_STORAGE_KEY,
   DEFAULT_AUTH,
   DEFAULT_ANALYSIS,
   MESSAGE_TYPES,
@@ -133,7 +134,7 @@ async function analyzeArticle(article, sender) {
   let backendResult;
 
   try {
-    backendResult = await requestBackendAnalysis(article.url, auth.token);
+    backendResult = await requestBackendAnalysis(article.url, auth.token, await ensureClientUserId());
   } catch (error) {
     await chrome.storage.local.set({
       [STORAGE_KEY]: {
@@ -318,6 +319,20 @@ async function getAuthState() {
     ...DEFAULT_AUTH,
     ...(stored[AUTH_STORAGE_KEY] || {})
   };
+}
+
+async function ensureClientUserId() {
+  const stored = await chrome.storage.local.get(CLIENT_USER_ID_STORAGE_KEY);
+  if (stored[CLIENT_USER_ID_STORAGE_KEY]) {
+    return stored[CLIENT_USER_ID_STORAGE_KEY];
+  }
+
+  const clientUserId =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `client-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  await chrome.storage.local.set({ [CLIENT_USER_ID_STORAGE_KEY]: clientUserId });
+  return clientUserId;
 }
 
 function normalizeKeywords(keywords) {
