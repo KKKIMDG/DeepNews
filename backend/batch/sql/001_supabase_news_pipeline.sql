@@ -77,3 +77,5 @@ create index if not exists idx_article_keyword_news_id on public.article_keyword
 create index if not exists idx_article_keyword_keyword_id on public.article_keyword(keyword_id);
 create index if not exists idx_news_interaction_news_id on public.news_interaction(news_id);
 create index if not exists idx_news_interaction_client_user_id on public.news_interaction(client_user_id);
+create index if not exists idx_news_interaction_client_news on public.news_interaction(client_user_id, news_id);
+create index if not exists idx_news_interaction_news_client on public.news_interaction(news_id, client_user_id);

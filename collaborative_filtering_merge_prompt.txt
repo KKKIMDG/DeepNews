@@ -1,0 +1,28 @@
+다음 브랜치의 협업 필터링 작업을 최신 dev/main 작업과 병합해 주세요.
+
+목표:
+- MIND 원본 ZIP/폴더 없이도 실행 가능한 발표용 협업 필터링 데모를 유지합니다.
+- 대용량 MIND 데이터셋은 Git에 포함하지 않고, 필요 시 별도 다운로드/로컬 경로로만 사용합니다.
+- 실제 서비스 통합은 Spring 백엔드의 recommendation 도메인을 중심으로 진행합니다.
+
+병합 시 확인할 내용:
+1. .gitignore에 MINDlarge_*/ 및 MINDlarge_*.zip 제외 규칙이 유지되는지 확인합니다.
+2. backend/src/main/java/com/deepnews/domain/recommendation 아래의 NewsInteraction 기반 추천 구조를 보존합니다.
+3. NewsService에는 추천 알고리즘을 직접 넣지 말고 RecommendationService 호출만 남기는 방향으로 정리합니다.
+4. AnalyzeArticleResponseDto의 recommendations 응답 구조가 프론트엔드 렌더링과 호환되는지 확인합니다.
+5. /api/v1/news/analyze 응답에 추천 결과가 포함되도록 유지합니다.
+6. /api/v1/news/interactions 또는 이에 대응하는 상호작용 기록 API를 유지합니다.
+7. MIND SVD 목업 브랜치의 Python 구현은 참고하되, 원본 MIND 파일 의존성이 런타임 필수가 되지 않도록 분리합니다.
+8. 발표용 데모에서는 DB에 저장된 news_interaction 데이터가 부족할 경우 키워드 유사도 fallback이 동작하도록 합니다.
+9. 병합 후 Gradle build/test를 실행하고, Java toolchain 문제가 있으면 JDK 21 설정 또는 Gradle toolchain 설정을 먼저 맞춥니다.
+10. 대용량 파일, 로컬 runtime 파일, API 키, .env 파일이 staging에 포함되지 않았는지 반드시 확인합니다.
+
+권장 최종 구조:
+- Spring Backend: 사용자 행동 저장, 추천 조회, 분석 응답에 추천 포함
+- RecommendationService: 사용자 기반 CF, 기사 기반 CF, 키워드 fallback 조합
+- Python/MIND Pipeline: 오프라인 학습 및 평가 전용
+- Frontend: 추천 표시 및 클릭/북마크/비관심 이벤트 전송
+
+주의:
+- MINDlarge_train, MINDlarge_dev, MINDlarge_test 폴더와 ZIP 파일은 절대 커밋하지 않습니다.
+- 발표용 작동이 우선이므로, MIND 원본 데이터가 없어도 추천 API가 빈 응답 또는 fallback 추천으로 정상 응답해야 합니다.
