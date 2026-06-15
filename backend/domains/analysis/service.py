@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from ...config import settings
@@ -7,23 +8,25 @@ from ...config import settings
 try:
     import torch
     import torch.nn.functional as F
-    from transformers import AutoModelForCausalLM, AutoModelForSequenceClassification, AutoTokenizer
+    from transformers import (
+        AutoModelForSequenceClassification,
+        AutoTokenizer,
+        BartForConditionalGeneration,
+        PreTrainedTokenizerFast,
+    )
 except Exception:
     torch = None
     F = None
-    AutoModelForCausalLM = None
     AutoModelForSequenceClassification = None
     AutoTokenizer = None
-
-try:
-    from peft import PeftModel
-except Exception:
-    PeftModel = None
+    BartForConditionalGeneration = None
+    PreTrainedTokenizerFast = None
 
 
 device = torch.device("cuda" if torch and torch.cuda.is_available() else "cpu") if torch else "cpu"
 print(f"사용 디바이스: {device}")
 
+# 광고 판별 모델 로드
 ad_tokenizer = None
 ad_model = None
 AD_MODEL_READY = False
@@ -43,37 +46,25 @@ if torch and AutoTokenizer and AutoModelForSequenceClassification and settings.a
 else:
     print("광고 판별 모델이 없어 placeholder 모드로 실행합니다.")
 
+# 요약 모델 (KoBART) 로드
 summary_tokenizer = None
 summary_model = None
 SUMMARY_MODEL_READY = False
 
-if torch and AutoTokenizer and AutoModelForCausalLM and PeftModel and settings.summary_adapter_dir.exists():
+KOBART_DIR = Path("./model/kobart_summary_final_v2")
+
+if torch and PreTrainedTokenizerFast and BartForConditionalGeneration and KOBART_DIR.exists():
     try:
-        summary_tokenizer = AutoTokenizer.from_pretrained(
-            str(settings.summary_base_model),
-            local_files_only=True,
+        summary_tokenizer = PreTrainedTokenizerFast.from_pretrained(
+            str(KOBART_DIR), local_files_only=True
         )
-        summary_tokenizer.pad_token = summary_tokenizer.eos_token
-
-        model_kwargs = {"local_files_only": True}
-        if torch.cuda.is_available():
-            model_kwargs["dtype"] = torch.bfloat16
-            model_kwargs["device_map"] = "auto"
-
-        base_model = AutoModelForCausalLM.from_pretrained(
-            str(settings.summary_base_model),
-            **model_kwargs,
+        summary_model = BartForConditionalGeneration.from_pretrained(
+            str(KOBART_DIR), local_files_only=True
         )
-        if not torch.cuda.is_available():
-            base_model.to(device)
-        summary_model = PeftModel.from_pretrained(base_model, str(settings.summary_adapter_dir))
-        if not torch.cuda.is_available():
-            summary_model.to(device)
+        summary_model.to(device)
         summary_model.eval()
         SUMMARY_MODEL_READY = True
-        print(
-            f"요약 모델 로드 완료: base={settings.summary_base_model}, adapter={settings.summary_adapter_dir}"
-        )
+        print(f"요약 모델 로드 완료 (KoBART): {KOBART_DIR}")
     except Exception as exception:
         print(f"요약 모델 로드 실패: {exception}")
 else:
@@ -109,42 +100,27 @@ def summarize(text: str) -> str:
         fallback = text[:277].rstrip()
         return f"{fallback}..." if len(text) > 280 else text
 
-    prompt = f"""다음 뉴스 기사를 3~5문장으로 요약해줘.
-
-기사:
-{text}
-
-요약:
-"""
     inputs = summary_tokenizer(
-        prompt,
+        text,
         return_tensors="pt",
+        max_length=1024,
         truncation=True,
-        max_length=settings.max_len,
     ).to(device)
 
     with torch.no_grad():
         outputs = summary_model.generate(
-            **inputs,
-            max_new_tokens=settings.summary_max_tokens,
+            inputs["input_ids"],
+            max_length=150,
+            min_length=20,
+            num_beams=4,
             do_sample=False,
-            pad_token_id=summary_tokenizer.eos_token_id,
-            eos_token_id=summary_tokenizer.eos_token_id,
-            repetition_penalty=1.1,
+            early_stopping=True,
+            no_repeat_ngram_size=3,
+            repetition_penalty=1.2,
         )
 
-    generated = summary_tokenizer.decode(
-        outputs[0][inputs["input_ids"].shape[1] :],
-        skip_special_tokens=True,
-    )
-
-    if "\n요약" in generated:
-        generated = generated.split("\n요약")[0]
-    for stop in ["\n##", "\n#", "\n▲", "\n[", "\n="]:
-        if stop in generated:
-            generated = generated.split(stop)[0]
-
-    return generated.strip()
+    summary = summary_tokenizer.decode(outputs[0], skip_special_tokens=True)
+    return summary.strip()
 
 
 def analyze_article(url: str, title: str, text: str) -> dict[str, Any]:
