@@ -359,7 +359,7 @@ function isSupportedArticleUrl(url) {
   try {
     const parsed = new URL(url);
     const isNaverNewsHost =
-      parsed.hostname === "news.naver.com" || parsed.hostname === "n.news.naver.com";
+      ["news.naver.com", "n.news.naver.com", "m.sports.naver.com", "sports.naver.com"].includes(parsed.hostname);
 
     if (!isNaverNewsHost) {
       return false;

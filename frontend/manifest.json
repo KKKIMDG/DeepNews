@@ -14,7 +14,9 @@
     "https://news.naver.com/*",
     "https://n.news.naver.com/*",
     "http://127.0.0.1:8000/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "https://m.sports.naver.com/*",
+    "https://sports.naver.com/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js",
@@ -24,7 +26,9 @@
     {
       "matches": [
         "https://news.naver.com/*",
-        "https://n.news.naver.com/*"
+        "https://n.news.naver.com/*",
+        "https://m.sports.naver.com/*",
+        "https://sports.naver.com/*"
       ],
       "js": [
         "src/content/content-script.js"

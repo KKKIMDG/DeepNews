@@ -8,6 +8,7 @@ globalThis.__deepnewsContentScriptLoaded = true;
 const ARTICLE_SELECTORS = {
   body: [
     "#dic_area",
+    "#comp_news_article",
     "#newsct_article",
     ".newsct_article"
   ]

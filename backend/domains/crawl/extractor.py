@@ -52,6 +52,13 @@ def extract_article(url: str, config: Config) -> tuple[str, str, str]:
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
 
+    # Sports pages expose a dedicated body; avoid including navigation and related news.
+    if urlparse(response.url).hostname in {"m.sports.naver.com", "sports.naver.com"}:
+        title, content, published_at = extract_from_naver_html(soup, "", "")
+        if not content:
+            raise ValueError("Naver sports article body not found")
+        return title, content, published_at
+
     article = Article(url=url, language="ko", config=config)
     article.set_html(response.text)
     article.parse()
@@ -102,12 +109,14 @@ def extract_from_naver_html(
         )
 
     body_text = ""
-    body_node = soup.select_one("#dic_area")
+    body_node = soup.select_one("#dic_area") or soup.select_one("#comp_news_article")
     if body_node:
         body_copy = BeautifulSoup(str(body_node), "html.parser")
         for selector in [
             "script",
             "style",
+            "template",
+            "svg",
             "em.img_desc",
             "span.end_photo_org",
             ".media_end_summary",
@@ -121,6 +130,18 @@ def extract_from_naver_html(
     date_node = soup.select_one("span._ARTICLE_DATE_TIME")
     if date_node and date_node.get("data-date-time"):
         published_at = date_node["data-date-time"].strip()
+
+    if not published_at:
+        sports_date = soup.select_one(".article_head_info .date")
+        if sports_date:
+            match = re.fullmatch(
+                r"(\d{4})\.(\d{2})\.(\d{2})\.\s*(오전|오후)\s*(\d{1,2}):(\d{2})",
+                sports_date.get_text(" ", strip=True),
+            )
+            if match:
+                year, month, day, period, hour, minute = match.groups()
+                hour = int(hour) % 12 + (12 if period == "오후" else 0)
+                published_at = f"{year}-{month}-{day} {hour:02d}:{minute}:00"
 
     return title, body_text, published_at
 
