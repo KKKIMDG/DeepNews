@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--limit", type=int, default=50, help="Number of articles to collect")
     parser.add_argument(
         "--output-dir",
-        default="backend_fastapi/runtime/output",
+        default="backend/runtime/output",
         help="Directory for JSON and CSV outputs",
     )
     parser.add_argument(
@@ -20,7 +20,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip database sync and only save local artifacts",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.limit < 1 or args.limit > 1000:
+        parser.error("--limit must be between 1 and 1000")
+    if not args.query.strip():
+        parser.error("--query must not be blank")
+    return args
 
 
 def main() -> None:

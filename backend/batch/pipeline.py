@@ -171,8 +171,13 @@ def run_ingestion_pipeline(
     skip_db_sync: bool = False,
     database_url: str | None = None,
 ) -> dict[str, Any]:
+    if not query.strip() or not 1 <= limit <= 1000:
+        raise ValueError("query is required and limit must be between 1 and 1000")
     batch = collect_news_batch(query=query, limit=limit)
     output_paths = save_batch_outputs(batch, output_dir)
+
+    if not batch.articles:
+        raise RuntimeError("All article extractions failed; see the saved failure report.")
 
     db_sync = False
     if not skip_db_sync:
@@ -248,7 +253,7 @@ def collect_naver_news_links(query: str, limit: int, sleep_seconds: float = 0.4)
     seen: set[str] = set()
     start = 1
 
-    while len(links) < limit:
+    while len(links) < limit and start <= 1000:
         url = SEARCH_URL_TEMPLATE.format(query=quote_plus(query), start=start)
         response = session.get(url, timeout=20)
         response.raise_for_status()
@@ -258,6 +263,7 @@ def collect_naver_news_links(query: str, limit: int, sleep_seconds: float = 0.4)
         if not page_links:
             break
 
+        previous_count = len(links)
         for link in page_links:
             if link in seen:
                 continue
@@ -265,6 +271,9 @@ def collect_naver_news_links(query: str, limit: int, sleep_seconds: float = 0.4)
             links.append(link)
             if len(links) >= limit:
                 break
+
+        if len(links) == previous_count:
+            break
 
         start += 10
         time.sleep(sleep_seconds)

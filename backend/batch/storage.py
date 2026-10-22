@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 
 def sync_news_batch_to_database(batch: "BatchResult", database_url: str | None = None) -> None:
+    if not batch.articles:
+        return
     dsn = database_url or settings.database_url
     with psycopg2.connect(dsn) as connection:
         with connection.cursor() as cursor:

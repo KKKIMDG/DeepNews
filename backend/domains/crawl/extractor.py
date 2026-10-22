@@ -210,3 +210,12 @@ def to_iso_datetime(value: str) -> str:
 class RegexAnalyzer:
     def nouns(self, text: str) -> list[str]:
         return re.findall(r"[가-힣A-Za-z]{2,}", text or "")
+
+
+def is_naver_news_link(url: str) -> bool:
+    parsed = urlparse(url)
+    return (
+        parsed.scheme in {"http", "https"}
+        and parsed.hostname in NAVER_NEWS_DOMAINS
+        and re.fullmatch(r"/(?:mnews/)?article/\d+/\d+/?", parsed.path) is not None
+    )

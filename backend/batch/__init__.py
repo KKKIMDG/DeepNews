@@ -1,4 +1,3 @@
-from .analysis import run_analysis_pipeline
 from .pipeline import (
     ArticleRecord,
     BatchResult,
@@ -17,3 +16,8 @@ __all__ = [
     "save_batch_artifact",
     "save_batch_outputs",
 ]
+
+
+def run_analysis_pipeline(*args, **kwargs):
+    from .analysis import run_analysis_pipeline as run
+    return run(*args, **kwargs)
