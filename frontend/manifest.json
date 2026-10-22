@@ -11,35 +11,21 @@
     "sidePanel"
   ],
   "host_permissions": [
-    "https://news.naver.com/*",
-    "https://n.news.naver.com/*",
     "http://127.0.0.1:8000/*",
-    "http://localhost:8000/*",
-    "https://m.sports.naver.com/*",
-    "https://sports.naver.com/*"
+    "http://localhost:8000/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.js",
     "type": "module"
   },
-  "content_scripts": [
-    {
-      "matches": [
-        "https://news.naver.com/*",
-        "https://n.news.naver.com/*",
-        "https://m.sports.naver.com/*",
-        "https://sports.naver.com/*"
-      ],
-      "js": [
-        "src/content/content-script.js"
-      ],
-      "run_at": "document_idle"
-    }
-  ],
   "side_panel": {
     "default_path": "src/panel/panel.html"
   },
   "action": {
     "default_title": "DeepNews Analyzer"
-  }
+  },
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
 }

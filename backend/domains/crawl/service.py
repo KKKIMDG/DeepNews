@@ -54,3 +54,14 @@ def crawl_article(url: str) -> CrawlResponse:
         token_counts=limited_token_counts,
         keywords=keywords,
     )
+
+
+def prepare_browser_article(url: str, title: str, text: str) -> CrawlResponse:
+    """Process supplied plain text without fetching the caller's URL."""
+    content = clean_article_text(text)
+    if len(content) < 80:
+        raise HTTPException(status_code=422, detail="정제 후 기사 본문이 너무 짧습니다.")
+    analyzer, _ = get_konlpy_analyzer()
+    counts = limit_token_counts(extract_token_counts(content, analyzer))
+    return CrawlResponse(title=title.strip(), url=url, content=content,
+                         published_at="", token_counts=counts, keywords=list(counts))

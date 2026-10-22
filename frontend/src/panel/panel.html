@@ -57,6 +57,11 @@
 
       <div id="analysis-content" class="analysis-content" hidden>
         <section class="card">
+          <button id="analyze-article" class="auth-submit" type="button">현재 기사 분석</button>
+          <p>버튼을 누르면 현재 페이지의 제목과 본문을 분석 서버로 전송합니다.</p>
+          <p id="analysis-message" role="status" aria-live="polite"></p>
+        </section>
+        <section class="card">
           <h2>핵심 키워드</h2>
           <button id="show-keyword-popup" class="inline-action" type="button">팝업 띄우기</button>
           <div id="keyword-list" class="keyword-list"></div>

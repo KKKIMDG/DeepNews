@@ -627,7 +627,7 @@ async function sendActiveTabMessage(message) {
     currentWindow: true
   });
 
-  if (!tab?.id) {
+  if (!tab?.id || tab.url !== latestAnalysis.article?.url) {
     return;
   }
 
@@ -653,19 +653,8 @@ async function sendActiveTabMessage(message) {
 }
 
 function isSupportedArticleUrl(url) {
-  if (!url) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(url);
-    const isNaverNewsHost =
-      ["news.naver.com", "n.news.naver.com", "m.sports.naver.com", "sports.naver.com"].includes(parsed.hostname);
-
-    return isNaverNewsHost && /\/article\//.test(parsed.pathname);
-  } catch {
-    return false;
-  }
+  try { return ["http:", "https:"].includes(new URL(url).protocol); }
+  catch { return false; }
 }
 
 function insertInlineActionButton(id, targetNode) {
@@ -725,3 +714,24 @@ function escapeHtml(value) {
     return replacements[character];
   });
 }
+
+const analyzeButton = document.getElementById("analyze-article");
+const analysisMessage = document.getElementById("analysis-message");
+analyzeButton.addEventListener("click", async () => {
+  analyzeButton.disabled = true;
+  analysisMessage.textContent = "기사 본문을 추출하고 분석하는 중입니다.";
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!isSupportedArticleUrl(tab?.url)) throw new Error("웹 기사 페이지에서 실행해 주세요.");
+    const origin = `${new URL(tab.url).origin}/*`;
+    const granted = await chrome.permissions.request({ origins: [origin] });
+    if (!granted) throw new Error("이 사이트의 본문을 읽으려면 접근 권한이 필요합니다.");
+    const response = await chrome.runtime.sendMessage({ type: MESSAGE_TYPES.ANALYZE_ACTIVE_TAB });
+    if (!response?.ok) throw new Error(response?.error || "분석에 실패했습니다.");
+    analysisMessage.textContent = "분석이 완료되었습니다.";
+  } catch (error) {
+    analysisMessage.textContent = error.message;
+  } finally {
+    analyzeButton.disabled = false;
+  }
+});

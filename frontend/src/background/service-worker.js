@@ -121,7 +121,7 @@ async function analyzeArticle(article, sender) {
     [STORAGE_KEY]: {
       ...DEFAULT_ANALYSIS,
       status: ANALYSIS_STATUS.LOADING,
-      article,
+      article: { url: article.url, title: article.title },
       updatedAt: new Date().toISOString()
     }
   });
@@ -133,13 +133,13 @@ async function analyzeArticle(article, sender) {
   let backendResult;
 
   try {
-    backendResult = await requestBackendAnalysis(article.url, auth.token);
+    backendResult = await requestBackendAnalysis(article, auth.token);
   } catch (error) {
     await chrome.storage.local.set({
       [STORAGE_KEY]: {
         ...DEFAULT_ANALYSIS,
         status: ANALYSIS_STATUS.ERROR,
-        article,
+        article: { url: article.url, title: article.title },
         summary: "분석 중 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.",
         updatedAt: new Date().toISOString()
       }
@@ -150,7 +150,7 @@ async function analyzeArticle(article, sender) {
   const keywords = normalizeKeywords(backendResult.keywords);
   const analysis = {
     status: ANALYSIS_STATUS.READY,
-    article,
+    article: { url: article.url, title: article.title },
     keywords,
     summary: backendResult.summary,
     recommendations: backendResult.recommendations,
@@ -158,6 +158,10 @@ async function analyzeArticle(article, sender) {
     updatedAt: new Date().toISOString()
   };
 
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (activeTab?.id !== sender.tab?.id || activeTab?.url !== article.url) {
+    return analysis;
+  }
   await chrome.storage.local.set({ [STORAGE_KEY]: analysis });
 
   if (sender.tab?.id) {
@@ -264,7 +268,6 @@ async function handleLogin(payload = {}) {
   };
 
   await chrome.storage.local.set({ [AUTH_STORAGE_KEY]: nextAuth });
-  await analyzeActiveTab();
   return nextAuth;
 }
 
@@ -276,7 +279,6 @@ async function handleSignup(payload = {}) {
   };
 
   await chrome.storage.local.set({ [AUTH_STORAGE_KEY]: nextAuth });
-  await analyzeActiveTab();
   return nextAuth;
 }
 
@@ -288,27 +290,30 @@ async function handleLogout() {
   return DEFAULT_AUTH;
 }
 
+let analysisInProgress = false;
+
 async function analyzeActiveTab() {
-  const [tab] = await chrome.tabs.query({
-    active: true,
-    currentWindow: true
-  });
-
-  if (!isSupportedArticleUrl(tab?.url)) {
-    return DEFAULT_ANALYSIS;
-  }
-
+  if (analysisInProgress) throw new Error("이미 분석 중입니다. 잠시 기다려 주세요.");
+  const auth = await getAuthState();
+  if (!auth.token) throw new Error("로그인 후 분석해 주세요.");
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!isSupportedArticleUrl(tab?.url)) throw new Error("HTTP 또는 HTTPS 기사 페이지에서 실행해 주세요.");
+  analysisInProgress = true;
   try {
-    return await analyzeArticle(
-      {
-        url: tab.url
-      },
-      {
-        tab
-      }
-    );
-  } catch {
-    return DEFAULT_ANALYSIS;
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["src/vendor/readability/Readability.js", "src/content/content-script.js"]
+    });
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id }, files: ["src/content/extract-article.js"]
+    });
+    const extracted = results[0]?.result;
+    if (!extracted?.ok) throw new Error(extracted?.error || "기사 본문을 추출하지 못했습니다.");
+    const current = await chrome.tabs.get(tab.id);
+    if (current.url !== extracted.article.url) throw new Error("페이지가 변경되었습니다. 다시 분석해 주세요.");
+    return await analyzeArticle(extracted.article, { tab });
+  } finally {
+    analysisInProgress = false;
   }
 }
 
@@ -344,29 +349,12 @@ function normalizeKeywords(keywords) {
 }
 
 async function syncAnalysisForTab(tab) {
-  if (isSupportedArticleUrl(tab?.url)) {
-    return;
-  }
-
+  const stored = await chrome.storage.local.get(STORAGE_KEY);
+  if (stored[STORAGE_KEY]?.article?.url === tab?.url) return;
   await chrome.storage.local.set({ [STORAGE_KEY]: DEFAULT_ANALYSIS });
 }
 
 function isSupportedArticleUrl(url) {
-  if (!url) {
-    return false;
-  }
-
-  try {
-    const parsed = new URL(url);
-    const isNaverNewsHost =
-      ["news.naver.com", "n.news.naver.com", "m.sports.naver.com", "sports.naver.com"].includes(parsed.hostname);
-
-    if (!isNaverNewsHost) {
-      return false;
-    }
-
-    return /\/article\//.test(parsed.pathname);
-  } catch {
-    return false;
-  }
+  try { return ["http:", "https:"].includes(new URL(url).protocol); }
+  catch { return false; }
 }

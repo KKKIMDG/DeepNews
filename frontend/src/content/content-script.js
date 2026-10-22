@@ -53,15 +53,7 @@ async function bootstrap() {
   await initializeTheme();
   injectHighlightStyle();
 
-  const article = extractArticleUrl();
-  if (!article) {
-    return;
-  }
 
-  safeRuntimeSendMessage({
-    type: ANALYZE_ARTICLE,
-    payload: article
-  });
 }
 
 registerExtensionListeners();

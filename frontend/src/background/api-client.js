@@ -10,59 +10,20 @@ async function safeJson(response) {
   return response.json();
 }
 
-export async function requestBackendAnalysis(url, token = "") {
-  try {
-    const headers = {
-      "Content-Type": "application/json"
-    };
-
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-
-    const response = await fetch(`${BACKEND_BASE_URL}/analyze`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        url
-      })
-    });
-
-    return await safeJson(response);
-  } catch {
-    return {
-      keywords: [
-        {
-          term: "뉴스",
-          count: 5
-        },
-        {
-          term: "분석",
-          count: 4
-        },
-        {
-          term: "이슈",
-          count: 3
-        }
-      ],
-      summary:
-        "현재 백엔드 분석 API가 연결되지 않아 개발용 분석 결과를 표시하고 있습니다. 실제 API가 연결되면 기사 URL 기반 요약 결과로 대체됩니다.",
-      recommendations: [
-        {
-          title: "개발용 추천 기사 1",
-          url
-        },
-        {
-          title: "개발용 추천 기사 2",
-          url
-        }
-      ],
-      adLikelihood: {
-        label: "개발용 판단 결과",
-        score: 0.09
-      }
-    };
+export async function requestBackendAnalysis(article, token = "") {
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${BACKEND_BASE_URL}/analyze`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(article),
+    signal: AbortSignal.timeout(180000)
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(typeof error.detail === "string" ? error.detail : `분석 요청 실패 (${response.status})`);
   }
+  return response.json();
 }
 
 export async function login(email, password) {

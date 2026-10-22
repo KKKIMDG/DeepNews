@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlparse
+from fastapi import HTTPException
 
 from ...database import get_session
 from ..analysis.service import analyze_article
 from ..crawl.schemas import CrawlResponse
-from ..crawl.service import crawl_article, limit_token_counts
+from ..crawl.service import crawl_article, limit_token_counts, prepare_browser_article
 from .models import News, NewsAnalysis
 from . import repository
 from .schemas import (
@@ -62,7 +64,7 @@ def build_article_data_from_crawl(payload: NewsCrawlRequest) -> dict[str, Any]:
 
 def build_article_data_from_analysis(crawl_result: CrawlResponse) -> dict[str, Any]:
     return {
-        "source": "naver_news",
+        "source": urlparse(crawl_result.url).hostname or "unknown",
         "content": crawl_result.content,
         "publishedAt": crawl_result.published_at,
         "extraData": {
@@ -139,14 +141,21 @@ def serialize_analysis_response(news: News, analysis: NewsAnalysis, cached: bool
     )
 
 
-def analyze_or_get(url: str) -> AnalyzeArticleApiResponse:
+def analyze_or_get(url: str, title: str | None = None, content: str | None = None) -> AnalyzeArticleApiResponse:
+    browser_article = prepare_browser_article(url, title or "", content) if content is not None else None
     with get_session() as session:
         existing_news = repository.fetch_news_by_url(session, url)
+        if browser_article and existing_news:
+            # Browser input must not silently replace a shared article with different text.
+            stored_content = (existing_news.article_data or {}).get("content")
+            if stored_content != browser_article.content:
+                raise HTTPException(status_code=409, detail="저장된 기사와 본문이 다릅니다. 기사 내용 변경 여부를 확인해 주세요.")
         if existing_news and existing_news.analysis:
             return serialize_analysis_response(existing_news, existing_news.analysis, cached=True)
 
-        crawl_result = crawl_article(url)
+        crawl_result = browser_article or crawl_article(url)
         article_data = build_article_data_from_analysis(crawl_result)
+        article_data["extraData"]["content_origin"] = "browser" if browser_article else "server"
         news = repository.upsert_news(session, crawl_result.title, crawl_result.url, article_data)
         repository.save_keyword_mappings(session, news.id, crawl_result.token_counts)
 
