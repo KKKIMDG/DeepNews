@@ -2,8 +2,6 @@
 import importlib.util
 from pathlib import Path
 import unittest
-from unittest.mock import Mock, patch
-from bs4 import BeautifulSoup
 
 spec = importlib.util.spec_from_file_location(
     'crawl_extractor', Path(__file__).resolve().parents[1] / 'backend/domains/crawl/extractor.py'
@@ -13,27 +11,31 @@ spec.loader.exec_module(extractor)
 
 
 class ExtractionTests(unittest.TestCase):
-    def test_sports_body_excludes_navigation(self):
-        soup = BeautifulSoup('''<meta property="og:title" content="경기 결과">
-        <nav>메뉴</nav><article id="comp_news_article">실제 본문
-        <script>noise</script><svg>noise</svg></article><aside>추천 기사</aside>
-        <div class="article_head_info"><em class="date">2026.10.22. 오후 12:05</em></div>''', 'html.parser')
-        self.assertEqual(extractor.extract_from_naver_html(soup, '', ''),
-                         ('경기 결과', '실제 본문', '2026-10-22 12:05:00'))
+    def test_canonical_naver_article_url(self):
+        canonical = 'https://n.news.naver.com/mnews/article/001/0016392704'
+        for url in ['https://n.news.naver.com/mnews/article/001/0016392704?sid=104',
+                    'https://n.news.naver.com/article/001/0016392704',
+                    'https://n.news.naver.com/article/001/0016392704?cds=news_media_pc&type=editn',
+                    'https://news.naver.com/main/read.naver?mode=LSD&oid=001&aid=0016392704',
+                    'https://m.news.naver.com/read.naver?oid=001&aid=0016392704']:
+            self.assertEqual(extractor.canonical_article_url(url), canonical, url)
+        self.assertEqual(extractor.canonical_article_url('https://m.sports.naver.com/kbaseball/article/108/0003480793?sid3=1'),
+                         'https://m.sports.naver.com/kbaseball/article/108/0003480793')
+        for url in ['https://news.kbs.co.kr/news/view.do?ncd=8699835&ref=DA', 'https://n.news.naver.com/main/ranking',
+                    'https://news.naver.com/main/read.naver?oid=001']:
+            self.assertEqual(extractor.canonical_article_url(url), url)
 
-    def test_regular_news_unchanged(self):
-        soup = BeautifulSoup('''<h2 id="title_area">일반 기사</h2>
-        <div id="dic_area">본문<em class="img_desc">사진 설명</em></div>
-        <span class="_ARTICLE_DATE_TIME" data-date-time="2026-10-22 10:00:00"></span>''', 'html.parser')
-        self.assertEqual(extractor.extract_from_naver_html(soup, '', ''),
-                         ('일반 기사', '본문', '2026-10-22 10:00:00'))
+    def test_published_at_normalization(self):
+        normalize = extractor.normalize_published_at
+        self.assertEqual(normalize('2026-10-30 09:12:00'), '2026-10-30T09:12:00')
+        self.assertEqual(normalize('2026-10-30T00:12:00.000Z'), '2026-10-30T00:12:00+00:00')
+        self.assertEqual(normalize('2026-10-30T09:12:00+09:00'), '2026-10-30T09:12:00+09:00')
+        for bad in ['', None, '어제', '1970-01-01T00:00:00', '2999-01-01']:
+            self.assertEqual(normalize(bad), '', bad)
 
-    def test_missing_sports_body_fails(self):
-        response = Mock(url='https://m.sports.naver.com/kbaseball/article/001/123', text='<nav>메뉴</nav>')
-        with patch.object(extractor, 'build_session') as session:
-            session.return_value.get.return_value = response
-            with self.assertRaisesRegex(ValueError, 'body not found'):
-                extractor.extract_article(response.url, extractor.get_article_config())
+    def test_text_cleanup_drops_bylines(self):
+        cleaned = extractor.clean_article_text('본문입니다. 홍길동 기자 hong@example.com [사진=연합뉴스]')
+        self.assertEqual(cleaned, '본문입니다.')
 
 
 if __name__ == '__main__':

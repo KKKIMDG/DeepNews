@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import copy
+import logging
+import re
 from typing import Any
 from urllib.parse import urlparse
+
 from fastapi import HTTPException
 
 from ...database import get_session
-from ..analysis.service import analyze_article
+from ..analysis.service import AD_HIGH_THRESHOLD, AD_REVIEW_THRESHOLD, analyze_article
+from ..auth.dependencies import CurrentUser
+from ..personalization import service as personalization
+from ..personalization.schemas import RecommendationPayload
 from ..crawl.schemas import CrawlResponse
-from ..crawl.service import crawl_article, limit_token_counts, prepare_browser_article
+from ..crawl.extractor import canonical_article_url
+from ..crawl.service import prepare_browser_article
 from .models import News, NewsAnalysis
 from . import repository
 from .schemas import (
@@ -15,94 +23,74 @@ from .schemas import (
     AnalyzeArticleApiResponse,
     ArticlePayload,
     KeywordPayload,
-    NewsCrawlRequest,
+    ReportResponse,
 )
+
+logger = logging.getLogger(__name__)
+
+# Distinct users who must report a shared analysis before it is dropped and re-analyzed.
+REANALYSIS_REPORTS = 3
+# Share of the BigKinds lead's character bigrams that must appear in the submitted text.
+LEAD_MATCH_RATIO = 0.6
+# Stored extraData that describes the old text and must not survive a replacement.
+REPLACED_EXTRA_KEYS = ("content_partial", "original_content", "token_counts", "keywords")
 
 
 def ad_label_for(score: float) -> str:
     if score < 0:
         return "미분석"
-    if score >= 0.8:
+    if score >= AD_HIGH_THRESHOLD:
         return "광고성 높음"
-    if score >= 0.4:
+    if score >= AD_REVIEW_THRESHOLD:
         return "검토 필요"
     return "광고성 낮음"
 
 
-def merge_extra_data(payload: NewsCrawlRequest) -> dict[str, Any]:
-    extra_data = dict(payload.extraData or {})
-    for key, value in (payload.model_extra or {}).items():
-        if key not in {
-            "title",
-            "url",
-            "source",
-            "content",
-            "original_content",
-            "published_at",
-            "token_counts",
-            "extraData",
-        }:
-            extra_data[key] = value
-    return extra_data
+def _bigrams(text: str) -> set[str]:
+    compact = re.sub(r"[^0-9A-Za-z가-힣]", "", text)
+    return {compact[i:i + 2] for i in range(len(compact) - 1)}
 
 
-def build_article_data_from_crawl(payload: NewsCrawlRequest) -> dict[str, Any]:
-    limited = limit_token_counts(payload.token_counts or {})
-    keywords = [{"term": term, "count": count} for term, count in limited.items()]
-    extra_data = merge_extra_data(payload)
-    extra_data["token_counts"] = limited
-    extra_data["keywords"] = keywords
-    if payload.original_content:
-        extra_data.setdefault("original_content", payload.original_content)
-    return {
-        "source": payload.source,
-        "content": payload.content,
-        "publishedAt": payload.published_at or "",
-        "extraData": extra_data,
+def matches_lead(lead: str, content: str) -> bool:
+    """Whether submitted text plausibly is the article whose first 200 characters BigKinds gave us."""
+    lead_grams = _bigrams(lead[:200])
+    if len(lead_grams) < 20:
+        return True  # too little to judge
+    return len(lead_grams & _bigrams(content)) / len(lead_grams) >= LEAD_MATCH_RATIO
+
+
+def is_reusable(news: News | None) -> bool:
+    if news is None or news.analysis is None:
+        return False
+    extra = (news.article_data or {}).get("extraData") or {}
+    if extra.get("content_partial"):
+        return False
+    # Placeholder rows from old batch runs (ad_probability = -1) get a real analysis on the next request.
+    return news.analysis.ad_probability is not None and float(news.analysis.ad_probability) >= 0
+
+
+def build_article_data(
+    article: CrawlResponse, stored_data: dict[str, Any], user: CurrentUser, lead_verified: bool
+) -> dict[str, Any]:
+    # Keep what earlier sources knew (BigKinds category/publisher, publish date); replace only text-derived parts.
+    extra = {
+        key: value
+        for key, value in (stored_data.get("extraData") or {}).items()
+        if key not in REPLACED_EXTRA_KEYS
     }
-
-
-def build_article_data_from_analysis(crawl_result: CrawlResponse) -> dict[str, Any]:
+    extra.update(
+        token_counts=article.token_counts,
+        keywords=[{"term": term, "count": count} for term, count in article.token_counts.items()],
+        content_origin="browser",
+        submitted_by=user.id,
+    )
+    if lead_verified:
+        extra["lead_verified"] = True
     return {
-        "source": urlparse(crawl_result.url).hostname or "unknown",
-        "content": crawl_result.content,
-        "publishedAt": crawl_result.published_at,
-        "extraData": {
-            "token_counts": crawl_result.token_counts,
-            "keywords": [
-                {"term": term, "count": count}
-                for term, count in crawl_result.token_counts.items()
-            ],
-        },
-    }
-
-
-def save_crawled_news(payload: NewsCrawlRequest) -> int:
-    article_data = build_article_data_from_crawl(payload)
-    with get_session() as session:
-        news = repository.upsert_news(session, payload.title, payload.url, article_data)
-        repository.save_keyword_mappings(session, news.id, payload.token_counts)
-        return news.id
-
-
-def bulk_save_crawled_news(payloads: list[NewsCrawlRequest]) -> dict[str, Any]:
-    success_count = 0
-    fail_count = 0
-    fail_messages: list[str] = []
-
-    for payload in payloads:
-        try:
-            save_crawled_news(payload)
-            success_count += 1
-        except Exception as exception:
-            fail_count += 1
-            fail_messages.append(f"{payload.title} : {exception}")
-
-    return {
-        "total": len(payloads),
-        "success": success_count,
-        "fail": fail_count,
-        "errors": fail_messages,
+        "source": stored_data.get("source") or urlparse(article.url).hostname or "unknown",
+        "content": article.content,
+        "publishedAt": stored_data.get("publishedAt") or article.published_at,
+        "extraData": extra,
     }
 
 
@@ -127,8 +115,17 @@ def extract_keywords_from_article_data(article_data: dict[str, Any]) -> list[Key
     return []
 
 
-def serialize_analysis_response(news: News, analysis: NewsAnalysis, cached: bool) -> AnalyzeArticleApiResponse:
+def serialize_analysis_response(
+    news: News,
+    analysis: NewsAnalysis,
+    cached: bool,
+    recommendations: list[RecommendationPayload],
+    user: CurrentUser | None = None,
+    report_count: int = 0,
+    reported_by_me: bool = False,
+) -> AnalyzeArticleApiResponse:
     article_data = news.article_data or {}
+    extra = article_data.get("extraData") or {}
     score = -1.0 if analysis.ad_probability is None else float(analysis.ad_probability)
     return AnalyzeArticleApiResponse(
         newsId=news.id,
@@ -136,37 +133,95 @@ def serialize_analysis_response(news: News, analysis: NewsAnalysis, cached: bool
         article=ArticlePayload(title=news.title, url=news.url),
         keywords=extract_keywords_from_article_data(article_data),
         summary=analysis.summary or "",
-        recommendations=[{"title": news.title, "url": news.url}],
+        recommendations=recommendations,
         adLikelihood=AdLikelihoodPayload(label=ad_label_for(score), score=score),
+        contentOrigin=str(extra.get("content_origin") or ""),
+        sharedFromOther=cached and (user is None or extra.get("submitted_by") != user.id),
+        reportCount=report_count,
+        reportedByMe=reported_by_me,
     )
 
 
-def analyze_or_get(url: str, title: str | None = None, content: str | None = None) -> AnalyzeArticleApiResponse:
-    browser_article = prepare_browser_article(url, title or "", content) if content is not None else None
+def personalize_response(
+    session, news: News, analysis: NewsAnalysis, cached: bool, user: CurrentUser | None
+) -> AnalyzeArticleApiResponse:
+    # A savepoint keeps a personalization failure from rolling back the (expensive) analysis itself.
+    try:
+        with session.begin_nested():
+            if user is not None:
+                personalization.record_read(session, user, news.id)
+            recommendations = personalization.recommend(session, user, current_news_id=news.id)
+    except Exception:
+        logger.exception("개인화 처리 실패 (news_id=%s)", news.id)
+        recommendations = []
+    report_count, reported_by_me = repository.report_counts(session, news.id, user.id if user else None)
+    return serialize_analysis_response(news, analysis, cached, recommendations, user, report_count, reported_by_me)
+
+
+def analyze_or_get(
+    url: str,
+    title: str,
+    content: str,
+    user: CurrentUser,
+    published_at: str = "",
+) -> AnalyzeArticleApiResponse:
+    """Serve the shared analysis of an article, or analyze the text the user's browser extracted.
+
+    The server never fetches the URL. A stored analysis is never overwritten by a different text;
+    users report a wrong one instead (report_news).
+    """
+    url = canonical_article_url(url)
     with get_session() as session:
-        existing_news = repository.fetch_news_by_url(session, url)
-        if browser_article and existing_news:
-            # Browser input must not silently replace a shared article with different text.
-            stored_content = (existing_news.article_data or {}).get("content")
-            if stored_content != browser_article.content:
-                raise HTTPException(status_code=409, detail="저장된 기사와 본문이 다릅니다. 기사 내용 변경 여부를 확인해 주세요.")
-        if existing_news and existing_news.analysis:
-            return serialize_analysis_response(existing_news, existing_news.analysis, cached=True)
+        existing = repository.fetch_news_by_canonical_url(session, url)
+        if is_reusable(existing):
+            return personalize_response(session, existing, existing.analysis, True, user)
+        # Snapshot: ORM objects expire once this session commits.
+        target_url = existing.url if existing else url  # a legacy-URL row is updated in place, not duplicated
+        stored_title = existing.title if existing else ""
+        stored_data = copy.deepcopy(existing.article_data or {}) if existing else {}
 
-        crawl_result = browser_article or crawl_article(url)
-        article_data = build_article_data_from_analysis(crawl_result)
-        article_data["extraData"]["content_origin"] = "browser" if browser_article else "server"
-        news = repository.upsert_news(session, crawl_result.title, crawl_result.url, article_data)
-        repository.save_keyword_mappings(session, news.id, crawl_result.token_counts)
+    stored_partial = bool((stored_data.get("extraData") or {}).get("content_partial"))
+    if stored_partial and not matches_lead(stored_data.get("content", ""), content):
+        # Otherwise anyone could claim an imported BigKinds candidate with made-up text for everyone.
+        raise HTTPException(
+            status_code=409,
+            detail="저장된 기사 정보(빅카인즈)와 본문이 달라 분석하지 않았습니다. 기사 페이지가 맞는지 확인해 주세요.",
+        )
 
-        analysis_result = analyze_article(crawl_result.url, crawl_result.title, crawl_result.content)
+    article = prepare_browser_article(target_url, title, content, published_at)
+    # Inference runs with no DB session open, so slow requests don't pin pooled connections.
+    result = analyze_article(article.url, article.title, article.content)
+
+    with get_session() as session:
+        current = repository.fetch_news_by_url(session, target_url)
+        if is_reusable(current):  # another request finished the same article meanwhile
+            return personalize_response(session, current, current.analysis, True, user)
+        article_data = build_article_data(article, stored_data, user, lead_verified=stored_partial)
+        news = repository.upsert_news(session, stored_title or article.title, target_url, article_data)
+        repository.save_keyword_mappings(session, news.id, article.token_counts)
         analysis = repository.upsert_news_analysis(
             session=session,
             news_id=news.id,
-            summary=analysis_result["summary"],
-            ad_probability=analysis_result["ad_probability"],
-            is_clickbait=analysis_result["is_clickbait"],
-            named_entities=analysis_result["named_entities"],
+            summary=result["summary"],
+            ad_probability=result["ad_probability"],
+            is_clickbait=result["is_clickbait"],
+            named_entities=result["named_entities"],
         )
+        repository.clear_reports(session, news.id)
+        return personalize_response(session, news, analysis, False, user)
 
-        return serialize_analysis_response(news, analysis, cached=False)
+
+def report_news(news_id: int, user: CurrentUser, reason: str) -> ReportResponse:
+    with get_session() as session:
+        news = session.get(News, news_id)
+        if news is None:
+            raise HTTPException(status_code=404, detail="없는 기사입니다.")
+        if news.analysis is None:
+            raise HTTPException(status_code=409, detail="분석 결과가 없는 기사입니다.")
+        repository.add_report(session, news_id, user.id, reason.strip())
+        report_count, reported_by_me = repository.report_counts(session, news_id, user.id)
+        reanalysis = report_count >= REANALYSIS_REPORTS
+        if reanalysis:
+            # The next browser submission re-analyzes the article; its reports are cleared then.
+            repository.delete_news_analysis(session, news_id)
+        return ReportResponse(reportCount=report_count, reportedByMe=reported_by_me, reanalysis=reanalysis)

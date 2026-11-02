@@ -1,9 +1,25 @@
 from __future__ import annotations
 
-from pathlib import Path
+import logging
+import threading
 from typing import Any
 
 from ...config import settings
+
+logger = logging.getLogger(__name__)
+
+# One place for the ad-probability bands (label, is_ad flag, ranking filter default).
+AD_HIGH_THRESHOLD = 0.8
+AD_REVIEW_THRESHOLD = 0.4
+# The models only read the first 512 / 1024 tokens; tokenizing a 100k-character body is wasted CPU.
+MAX_INPUT_CHARS = 6000
+# The shared MIG slice runs at most this many inferences at once; the rest wait, then get 503.
+_INFERENCE_SLOTS = threading.BoundedSemaphore(2)
+INFERENCE_WAIT_SECONDS = 120
+
+
+class AnalysisUnavailable(RuntimeError):
+    """Models not loaded or the inference queue is full; the caller should answer 503."""
 
 try:
     import torch
@@ -24,7 +40,7 @@ except Exception:
 
 
 device = torch.device("cuda" if torch and torch.cuda.is_available() else "cpu") if torch else "cpu"
-print(f"사용 디바이스: {device}")
+logger.info("사용 디바이스: %s", device)
 
 # 광고 판별 모델 로드
 ad_tokenizer = None
@@ -40,35 +56,33 @@ if torch and AutoTokenizer and AutoModelForSequenceClassification and settings.a
         ad_model.to(device)
         ad_model.eval()
         AD_MODEL_READY = True
-        print(f"광고 판별 모델 로드 완료: {settings.ad_model_dir}")
+        logger.info("광고 판별 모델 로드 완료: %s", settings.ad_model_dir)
     except Exception as exception:
-        print(f"광고 판별 모델 로드 실패: {exception}")
+        logger.exception("광고 판별 모델 로드 실패")
 else:
-    print("광고 판별 모델이 없어 placeholder 모드로 실행합니다.")
+    logger.warning("광고 판별 모델이 없습니다. 분석 요청은 503으로 응답합니다.")
 
 # 요약 모델 (KoBART) 로드
 summary_tokenizer = None
 summary_model = None
 SUMMARY_MODEL_READY = False
 
-KOBART_DIR = Path("./model/kobart_summary_final_v2")
-
-if torch and PreTrainedTokenizerFast and BartForConditionalGeneration and KOBART_DIR.exists():
+if torch and PreTrainedTokenizerFast and BartForConditionalGeneration and settings.summary_model_dir.exists():
     try:
         summary_tokenizer = PreTrainedTokenizerFast.from_pretrained(
-            str(KOBART_DIR), local_files_only=True
+            str(settings.summary_model_dir), local_files_only=True
         )
         summary_model = BartForConditionalGeneration.from_pretrained(
-            str(KOBART_DIR), local_files_only=True
+            str(settings.summary_model_dir), local_files_only=True
         )
         summary_model.to(device)
         summary_model.eval()
         SUMMARY_MODEL_READY = True
-        print(f"요약 모델 로드 완료 (KoBART): {KOBART_DIR}")
+        logger.info("요약 모델 로드 완료 (KoBART): %s", settings.summary_model_dir)
     except Exception as exception:
-        print(f"요약 모델 로드 실패: {exception}")
+        logger.exception("요약 모델 로드 실패")
 else:
-    print("요약 모델이 없어 placeholder 모드로 실행합니다.")
+    logger.warning("요약 모델이 없습니다. 분석 요청은 503으로 응답합니다.")
 
 
 def predict_ad(text: str) -> dict[str, Any]:
@@ -87,7 +101,7 @@ def predict_ad(text: str) -> dict[str, Any]:
         outputs = ad_model(**inputs)
         probs = F.softmax(outputs.logits, dim=-1)
         ad_prob = probs[0][1].item()
-        label = 1 if ad_prob >= 0.5 else 0
+        label = 1 if ad_prob >= AD_HIGH_THRESHOLD else 0
 
     return {
         "is_ad": bool(label),
@@ -123,9 +137,22 @@ def summarize(text: str) -> str:
     return summary.strip()
 
 
+def models_ready() -> bool:
+    return AD_MODEL_READY and SUMMARY_MODEL_READY
+
+
 def analyze_article(url: str, title: str, text: str) -> dict[str, Any]:
-    ad_result = predict_ad(text)
-    summary_text = summarize(text)
+    # Placeholder output (ad_prob=-1, truncated text) must never be stored as a shared result.
+    if not models_ready():
+        raise AnalysisUnavailable("분석 모델이 준비되지 않았습니다. 잠시 후 다시 시도해 주세요.")
+    if not _INFERENCE_SLOTS.acquire(timeout=INFERENCE_WAIT_SECONDS):
+        raise AnalysisUnavailable("분석 요청이 많아 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.")
+    try:
+        text = text[:MAX_INPUT_CHARS]
+        ad_result = predict_ad(text)
+        summary_text = summarize(text)
+    finally:
+        _INFERENCE_SLOTS.release()
     return {
         "url": url,
         "title": title,

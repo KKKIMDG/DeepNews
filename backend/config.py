@@ -7,7 +7,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_SQL_PATH = PROJECT_ROOT / "backend" / "sql" / "001_schema.sql"
+SCHEMA_SQL_DIR = PROJECT_ROOT / "backend" / "sql"
 
 load_dotenv(PROJECT_ROOT / ".env")
 load_dotenv(PROJECT_ROOT / "backend" / ".env")
@@ -17,11 +17,12 @@ load_dotenv(PROJECT_ROOT / "backend" / ".env")
 class Settings:
     database_url: str
     ad_model_dir: Path = PROJECT_ROOT / "model" / "ad_model"
-    summary_base_model: Path = PROJECT_ROOT / "model" / "gemma-2-9b-it"
-    summary_adapter_dir: Path = PROJECT_ROOT / "model" / "summary_model"
+    summary_model_dir: Path = PROJECT_ROOT / "model" / "kobart_summary_final_v2"
     max_len: int = 512
     summary_max_tokens: int = 200
     keyword_limit: int = 8
+    # When set, signup requires this code; used while the API is reachable from outside for team testing.
+    signup_invite_code: str = ""
     keyword_stopwords: frozenset[str] = frozenset({
         "이번",
         "관련",
@@ -57,4 +58,7 @@ def resolve_database_url() -> str:
     raise RuntimeError("DATABASE_URL is required. Put it in the environment or .env file.")
 
 
-settings = Settings(database_url=resolve_database_url())
+settings = Settings(
+    database_url=resolve_database_url(),
+    signup_invite_code=os.getenv("SIGNUP_INVITE_CODE", "").strip(),
+)

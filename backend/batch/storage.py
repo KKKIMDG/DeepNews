@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, TYPE_CHECKING
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from typing import Any, Iterator, TYPE_CHECKING
 
 import psycopg2
 from psycopg2.extras import Json, execute_values
@@ -9,31 +10,85 @@ from psycopg2.extras import Json, execute_values
 from ..config import settings
 
 if TYPE_CHECKING:
-    from .pipeline import BatchResult
+    from .bigkinds import BigKindsArticle
 
 
-def sync_news_batch_to_database(batch: "BatchResult", database_url: str | None = None) -> None:
-    if not batch.articles:
-        return
-    dsn = database_url or settings.database_url
-    with psycopg2.connect(dsn) as connection:
+@contextmanager
+def connect(database_url: str | None = None) -> Iterator["psycopg2.extensions.connection"]:
+    """Commit on success, roll back on error, and always close.
+
+    `with psycopg2.connect()` alone only ends the transaction; the connection would stay open.
+    """
+    connection = psycopg2.connect(database_url or settings.database_url)
+    try:
+        with connection:
+            yield connection
+    finally:
+        connection.close()
+
+
+def import_bigkinds_articles(
+    articles: list["BigKindsArticle"], import_time: str, database_url: str | None = None
+) -> int:
+    """Insert new URLs only. Existing rows may hold full text from the extension and must not be
+    overwritten by a 200-character BigKinds lead."""
+    if not articles:
+        return 0
+    with connect(database_url) as connection:
         with connection.cursor() as cursor:
-            url_to_news_id = upsert_news_rows(cursor, batch)
-            refresh_article_keyword_mappings(cursor, batch, url_to_news_id)
-        connection.commit()
+            inserted = execute_values(
+                cursor,
+                """
+                insert into news (title, url, article_data)
+                values %s
+                on conflict (url) do nothing
+                returning id, url
+                """,
+                [(article.title, article.url, Json(article.article_data(import_time))) for article in articles],
+                template="(%s, %s, %s)",
+                fetch=True,
+            )
+            url_to_news_id = {url: news_id for news_id, url in inserted}
+            new_articles = [article for article in articles if article.url in url_to_news_id]
+
+            words = sorted({word for article in new_articles for word in article.token_counts})
+            upsert_keywords(cursor, words)
+            keyword_map = get_keyword_ids(cursor, words)
+            mapping_values = [
+                (url_to_news_id[article.url], keyword_map[word], count)
+                for article in new_articles
+                for word, count in article.token_counts.items()
+            ]
+            if mapping_values:
+                execute_values(
+                    cursor,
+                    """
+                    insert into article_keyword (news_id, keyword_id, count)
+                    values %s
+                    on conflict (news_id, keyword_id) do update set count = excluded.count
+                    """,
+                    mapping_values,
+                    template="(%s, %s, %s)",
+                )
+            refresh_keyword_stats(cursor, {keyword_id for _, keyword_id, _ in mapping_values})
+    return len(new_articles)
 
 
 def fetch_unanalyzed_news(database_url: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
-    dsn = database_url or settings.database_url
+    # Rows analyzed while the models were missing hold placeholder results (ad_probability < 0)
+    # and are queued again. Partial (BigKinds 200-character) content would yield meaningless
+    # summaries and ad scores, so it is skipped. Random order keeps a permanently failing row
+    # from occupying the head of the queue on every run.
     query = """
     select n.id, n.title, n.url, n.article_data
     from news n
     left join news_analysis na on na.news_id = n.id
-    where na.id is null
-    order by n.created_at asc
+    where (na.id is null or na.ad_probability < 0)
+      and coalesce((n.article_data->'extraData'->>'content_partial')::boolean, false) = false
+    order by random()
     limit %s
     """
-    with psycopg2.connect(dsn) as connection:
+    with connect(database_url) as connection:
         with connection.cursor() as cursor:
             cursor.execute(query, (limit,))
             rows = cursor.fetchall()
@@ -60,14 +115,14 @@ def upsert_news_analysis_results(rows: list[dict[str, Any]], database_url: str |
     if not rows:
         return 0
 
-    dsn = database_url or settings.database_url
+    analyzed_at = datetime.now(timezone.utc)
     values = [
         (
             row["news_id"],
             row["summary"],
             round(float(row["ad_probability"]), 2),
             bool(row["is_clickbait"]),
-            datetime.utcnow(),
+            analyzed_at,
             Json(row.get("named_entities", [])),
         )
         for row in rows
@@ -91,84 +146,11 @@ def upsert_news_analysis_results(rows: list[dict[str, Any]], database_url: str |
         named_entities = excluded.named_entities
     """
 
-    with psycopg2.connect(dsn) as connection:
+    with connect(database_url) as connection:
         with connection.cursor() as cursor:
             execute_values(cursor, query, values, template="(%s, %s, %s, %s, %s, %s)")
-        connection.commit()
 
     return len(rows)
-
-
-def upsert_news_rows(cursor, batch: "BatchResult") -> dict[str, int]:
-    values = [
-        (
-            article.title,
-            article.url,
-            Json(article.article_data(batch.crawl_time)),
-        )
-        for article in batch.articles
-    ]
-
-    query = """
-    insert into news (title, url, article_data)
-    values %s
-    on conflict (url)
-    do update set
-        title = excluded.title,
-        article_data = excluded.article_data
-    """
-    execute_values(cursor, query, values, template="(%s, %s, %s)")
-
-    urls = [article.url for article in batch.articles]
-    cursor.execute("select id, url from news where url = any(%s)", (urls,))
-    return {url: news_id for news_id, url in cursor.fetchall()}
-
-
-def refresh_article_keyword_mappings(cursor, batch: "BatchResult", url_to_news_id: dict[str, int]) -> None:
-    news_ids = [url_to_news_id[article.url] for article in batch.articles if article.url in url_to_news_id]
-    if not news_ids:
-        return
-
-    affected_keyword_ids = collect_existing_keyword_ids(cursor, news_ids)
-    cursor.execute("delete from article_keyword where news_id = any(%s)", (news_ids,))
-
-    unique_words = sorted(
-        {
-            word
-            for article in batch.articles
-            for word in article.token_counts.keys()
-        }
-    )
-    upsert_keywords(cursor, unique_words)
-    keyword_map = get_keyword_ids(cursor, unique_words)
-
-    mapping_values = []
-    for article in batch.articles:
-        news_id = url_to_news_id[article.url]
-        for word, count in article.token_counts.items():
-            keyword_id = keyword_map[word]
-            mapping_values.append((news_id, keyword_id, count))
-            affected_keyword_ids.add(keyword_id)
-
-    if mapping_values:
-        execute_values(
-            cursor,
-            """
-            insert into article_keyword (news_id, keyword_id, count)
-            values %s
-            on conflict (news_id, keyword_id)
-            do update set count = excluded.count
-            """,
-            mapping_values,
-            template="(%s, %s, %s)",
-        )
-
-    refresh_keyword_stats(cursor, affected_keyword_ids)
-
-
-def collect_existing_keyword_ids(cursor, news_ids: list[int]) -> set[int]:
-    cursor.execute("select keyword_id from article_keyword where news_id = any(%s)", (news_ids,))
-    return {row[0] for row in cursor.fetchall()}
 
 
 def upsert_keywords(cursor, words: list[str]) -> None:

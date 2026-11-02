@@ -1,11 +1,16 @@
-requests
-beautifulsoup4
-pandas
-newspaper3k
-lxml[html_clean]
-lxml_html_clean
-konlpy
-JPype1
-psycopg2-binary
-python-dotenv
-SQLAlchemy
+# Versions match the GPU server lock (Python 3.10). On the server install with the lock as a
+# constraint so CUDA builds stay pinned: pip install -c ../requirements.lock.txt -r requirements.txt
+# torch==2.5.1 also matches the server's 2.5.1+cu124 build.
+fastapi==0.162.0
+uvicorn==0.54.0
+SQLAlchemy==2.0.55
+psycopg2-binary==2.9.13
+python-dotenv==1.2.4
+pandas==2.3.3
+openpyxl==3.1.5
+konlpy==0.6.0
+JPype1==1.7.1
+torch==2.5.1
+transformers==4.46.3
+tokenizers==0.20.3
+safetensors==0.8.0

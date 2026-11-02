@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from typing import Any
-
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from urllib.parse import urlparse
+
+from ..personalization.schemas import RecommendationPayload
 
 
 class AnalyzeArticleRequest(BaseModel):
-    url: str = Field(max_length=4096)
-    title: str | None = Field(default=None, max_length=500)
-    content: str | None = Field(default=None, min_length=100, max_length=100000)
+    # news.url is varchar(512); a longer URL would fail at insert time.
+    url: str = Field(max_length=512)
+    title: str = Field(min_length=1, max_length=500)
+    content: str = Field(min_length=100, max_length=100000)
+    publishedAt: str = Field(default="", max_length=64)
 
     @field_validator("url")
     @classmethod
@@ -21,9 +23,8 @@ class AnalyzeArticleRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_browser_article(self):
-        if self.content is not None:
-            if not self.title or not self.title.strip() or len(self.content.strip()) < 100:
-                raise ValueError("기사 제목과 100자 이상의 본문이 필요합니다.")
+        if not self.title.strip() or len(self.content.strip()) < 100:
+            raise ValueError("기사 제목과 100자 이상의 본문이 필요합니다.")
         return self
 
 
@@ -48,18 +49,20 @@ class AnalyzeArticleApiResponse(BaseModel):
     article: ArticlePayload
     keywords: list[KeywordPayload]
     summary: str
-    recommendations: list[dict[str, str]]
+    recommendations: list[RecommendationPayload]
     adLikelihood: AdLikelihoodPayload
+    contentOrigin: str = ""
+    # A cached result built from text someone else submitted (or imported); the panel offers a report button.
+    sharedFromOther: bool = False
+    reportCount: int = 0
+    reportedByMe: bool = False
 
 
-class NewsCrawlRequest(BaseModel):
-    model_config = ConfigDict(extra="allow")
+class ReportRequest(BaseModel):
+    reason: str = Field(default="", max_length=300)
 
-    title: str
-    url: str
-    source: str
-    content: str
-    original_content: str | None = None
-    published_at: str | None = None
-    token_counts: dict[str, int] = Field(default_factory=dict)
-    extraData: dict[str, Any] = Field(default_factory=dict)
+
+class ReportResponse(BaseModel):
+    reportCount: int
+    reportedByMe: bool
+    reanalysis: bool

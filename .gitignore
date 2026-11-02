@@ -22,3 +22,11 @@ backend/batch/logs/
 .vscode/
 model/
 hs_err_pid*.log
+*.zip
+*.xlsx
+.DS_Store
+CLAUDE.local.md
+airflow/inbox/*
+!airflow/inbox/.gitkeep
+
+node_modules/

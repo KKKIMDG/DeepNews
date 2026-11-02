@@ -1,80 +1,11 @@
+"""Text processing for article bodies the browser sends. The server never fetches article pages:
+Naver forbids automated collection, and fetching user-supplied URLs would expose the shared server (SSRF)."""
 from __future__ import annotations
 
-import os
 import re
 from collections import Counter
-from datetime import datetime
-from urllib.parse import urlparse
-
-import requests
-from bs4 import BeautifulSoup
-from newspaper import Article, Config
-
-DEFAULT_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/123.0.0.0 Safari/537.36"
-    ),
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-}
-
-NAVER_NEWS_DOMAINS = {"news.naver.com", "n.news.naver.com"}
-
-
-def clear_proxy_env() -> None:
-    for proxy_key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
-        os.environ.pop(proxy_key, None)
-
-
-def build_session() -> requests.Session:
-    session = requests.Session()
-    session.trust_env = False
-    session.headers.update(DEFAULT_HEADERS)
-    return session
-
-
-def get_article_config() -> Config:
-    config = Config()
-    config.browser_user_agent = DEFAULT_HEADERS["User-Agent"]
-    config.request_timeout = 20
-    config.fetch_images = False
-    config.memoize_articles = False
-    config.language = "ko"
-    config.proxies = {}
-    return config
-
-
-def extract_article(url: str, config: Config) -> tuple[str, str, str]:
-    clear_proxy_env()
-    session = build_session()
-    response = session.get(url, timeout=20)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # Sports pages expose a dedicated body; avoid including navigation and related news.
-    if urlparse(response.url).hostname in {"m.sports.naver.com", "sports.naver.com"}:
-        title, content, published_at = extract_from_naver_html(soup, "", "")
-        if not content:
-            raise ValueError("Naver sports article body not found")
-        return title, content, published_at
-
-    article = Article(url=url, language="ko", config=config)
-    article.set_html(response.text)
-    article.parse()
-
-    title = normalize_text(article.title or "")
-    original_content = normalize_text(article.text or "")
-    published_at = format_publish_datetime(article.publish_date)
-
-    if is_invalid_article_text(original_content):
-        title, original_content, published_at = extract_from_naver_html(
-            soup=soup,
-            fallback_title=title,
-            fallback_published_at=published_at,
-        )
-
-    return title, original_content, published_at
+from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlparse
 
 
 def normalize_text(text: str) -> str:
@@ -82,76 +13,6 @@ def normalize_text(text: str) -> str:
     text = re.sub(r"[\r\n\t]+", " ", text)
     text = re.sub(r"\s{2,}", " ", text)
     return text.strip()
-
-
-def is_invalid_article_text(text: str) -> bool:
-    stripped = normalize_text(text)
-    invalid_markers = (
-        "기사 섹션 분류 안내",
-        "이전 페이지",
-        "다음 페이지",
-    )
-    return len(stripped) < 80 or any(marker in stripped for marker in invalid_markers)
-
-
-def extract_from_naver_html(
-    soup: BeautifulSoup,
-    fallback_title: str,
-    fallback_published_at: str,
-) -> tuple[str, str, str]:
-    title = fallback_title
-    title_node = soup.select_one("#title_area") or soup.select_one("meta[property='og:title']")
-    if title_node:
-        title = (
-            title_node.get("content", "").strip()
-            if title_node.name == "meta"
-            else title_node.get_text(" ", strip=True)
-        )
-
-    body_text = ""
-    body_node = soup.select_one("#dic_area") or soup.select_one("#comp_news_article")
-    if body_node:
-        body_copy = BeautifulSoup(str(body_node), "html.parser")
-        for selector in [
-            "script",
-            "style",
-            "template",
-            "svg",
-            "em.img_desc",
-            "span.end_photo_org",
-            ".media_end_summary",
-            ".byline_s",
-        ]:
-            for node in body_copy.select(selector):
-                node.decompose()
-        body_text = normalize_text(body_copy.get_text("\n", strip=True))
-
-    published_at = fallback_published_at
-    date_node = soup.select_one("span._ARTICLE_DATE_TIME")
-    if date_node and date_node.get("data-date-time"):
-        published_at = date_node["data-date-time"].strip()
-
-    if not published_at:
-        sports_date = soup.select_one(".article_head_info .date")
-        if sports_date:
-            match = re.fullmatch(
-                r"(\d{4})\.(\d{2})\.(\d{2})\.\s*(오전|오후)\s*(\d{1,2}):(\d{2})",
-                sports_date.get_text(" ", strip=True),
-            )
-            if match:
-                year, month, day, period, hour, minute = match.groups()
-                hour = int(hour) % 12 + (12 if period == "오후" else 0)
-                published_at = f"{year}-{month}-{day} {hour:02d}:{minute}:00"
-
-    return title, body_text, published_at
-
-
-def format_publish_datetime(value: datetime | None) -> str:
-    if value is None:
-        return ""
-    if value.tzinfo is not None:
-        value = value.astimezone().replace(tzinfo=None)
-    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def clean_article_text(text: str) -> str:
@@ -198,13 +59,18 @@ def extract_token_counts(text: str, analyzer) -> dict[str, int]:
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
 
 
-def to_iso_datetime(value: str) -> str:
+def normalize_published_at(value: str | None) -> str:
+    """Browser-reported publish time (ISO-8601 or Naver's 'YYYY-MM-DD HH:MM:SS') → ISO string, or '' if unusable."""
+    value = (value or "").strip()
     if not value:
         return ""
     try:
-        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").isoformat(timespec="seconds")
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
-        return value
+        return ""
+    if not 1990 <= parsed.year <= datetime.now(timezone.utc).year + 1:
+        return ""
+    return parsed.isoformat(timespec="seconds")
 
 
 class RegexAnalyzer:
@@ -212,10 +78,25 @@ class RegexAnalyzer:
         return re.findall(r"[가-힣A-Za-z]{2,}", text or "")
 
 
-def is_naver_news_link(url: str) -> bool:
+NAVER_CANONICAL_HOSTS = {"news.naver.com", "n.news.naver.com", "m.news.naver.com"}
+NAVER_SECTION_HOSTS = {"m.sports.naver.com", "sports.naver.com", "m.entertain.naver.com", "entertain.naver.com"}
+
+
+def canonical_article_url(url: str) -> str:
+    """One stored URL per Naver article.
+
+    The same story reaches the extension as /article/ or /mnews/article/, with ?sid= or other
+    tracking parameters, or as an old read.naver?oid=&aid= link. Other sites are left untouched
+    because their query strings can identify the article (e.g. KBS ?ncd=).
+    """
     parsed = urlparse(url)
-    return (
-        parsed.scheme in {"http", "https"}
-        and parsed.hostname in NAVER_NEWS_DOMAINS
-        and re.fullmatch(r"/(?:mnews/)?article/\d+/\d+/?", parsed.path) is not None
-    )
+    host = parsed.hostname or ""
+    if host in NAVER_CANONICAL_HOSTS:
+        match = re.fullmatch(r"/(?:mnews/)?article/(\d+)/(\d+)/?", parsed.path)
+        query = parse_qs(parsed.query)
+        ids = match.groups() if match else (query.get("oid", [""])[0], query.get("aid", [""])[0])
+        if all(part.isdigit() for part in ids):
+            return f"https://n.news.naver.com/mnews/article/{ids[0]}/{ids[1]}"
+    if host in NAVER_SECTION_HOSTS and re.search(r"/article/\d+/\d+/?$", parsed.path):
+        return f"https://{host}{parsed.path.rstrip('/')}"
+    return url

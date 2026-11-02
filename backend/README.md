@@ -1,28 +1,27 @@
-# DeepNews FastAPI Backend
+# DeepNews FastAPI 백엔드
 
-This package is now the primary backend for DeepNews.
+확장 프로그램이 보낸 기사 본문을 분석(광고성 판별 RoBERTa, 요약 KoBART)하고 Postgres에 저장하며,
+로그인한 사용자에게 개인화 추천을 제공합니다. 서버는 기사 페이지를 직접 가져오지 않습니다.
 
-## Responsibilities
+## 실행
 
-- Real-time article crawl and analysis API
-- Direct Postgres persistence for `news`, `keyword`, `article_keyword`, `news_analysis`
-- Batch ingestion and batch analysis runners
-
-## Run API
+프로젝트 루트에서 실행합니다(`backend`는 패키지로 import됩니다).
 
 ```bash
+pip install -r requirements.txt
 uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-## Environment
+`backend.main`을 import하면 `backend/sql/*.sql`이 파일 이름 순서로 실행되고(모두 `if not exists`),
+분석 모델을 바로 로드합니다. 모델이 없으면 API는 뜨지만 분석 요청은 실패합니다. `/health`로 확인하세요.
 
-Provide one of the following:
+## 환경 변수
+
+루트 `.env`, `backend/.env` 순으로 읽습니다. 둘 중 하나가 필요합니다.
 
 ```env
 DATABASE_URL=postgresql://user:password@host:5432/postgres?sslmode=require
 ```
-
-or
 
 ```env
 DB_HOST=localhost
@@ -33,46 +32,46 @@ DB_PASSWORD=secret
 DB_SSLMODE=require
 ```
 
-## Run Batch Ingestion
+모델 경로: `model/ad_model/`, `model/kobart_summary_final_v2/` (git에 포함되지 않음).
+
+## API (`/api/v1`)
+
+| 경로 | 설명 |
+| --- | --- |
+| `POST /news/analyze` | 로그인 필요. `{url, title, content}`(브라우저에서 추출한 본문)를 받아 분석·저장하고 추천 기사를 함께 돌려줍니다. |
+| `POST /news/{news_id}/report` | 분석 결과 신고 |
+| `/auth/{signup,login,logout,me,password}` | 이메일/비밀번호 계정, Bearer 세션 토큰 |
+| `/me/{profile,keywords,topics,settings,history,recommendations,export}` | 개인화 설정(관심 분야 포함)과 추천 |
+| `GET /health` | 모델 로드 상태 |
+
+- URL은 `canonical_article_url`로 정규화합니다(네이버 기사 URL 형태를 하나로 통일).
+- 이미 분석된 기사는 브라우저 본문이 저장된 본문과 달라도 덮어쓰지 않고 저장된 결과를
+  `cached=True`로 돌려줍니다(예전에는 409를 냈습니다).
+- 빅카인즈로 들어온 부분 본문(`content_partial`) 기사는 사용자가 분석하면 전체 본문으로 교체됩니다.
+- 서버 측 크롤링 경로(`/news/crawl`, `/news/crawl/bulk`, `/crawl/article`, `/ai/analyze`)와
+  네이버 자동 수집 배치(`run_ingestion`)는 삭제했습니다. 네이버는 robots.txt와 약관으로 자동 수집을 금지합니다.
+
+## 배치
 
 ```bash
-python -m backend.run_ingestion --query AI --limit 10
+# 빅카인즈 엑셀 → 추천 후보 기사 (새 URL만 추가, 기존 행은 건드리지 않음)
+python -m backend.run_bigkinds_import --file NewsResult_*.xlsx [--dry-run] [--limit N]
+python -m backend.run_bigkinds_import --inbox airflow/inbox   # 폴더 안 엑셀 전부 처리 후 processed/·failed/로 이동
+
+# 분석이 없거나 placeholder(ad_probability < 0)인 기사 재분석 (부분 본문 기사는 제외)
+python -m backend.run_analysis --limit 20                     # 기본 mode=service
+python -m backend.run_analysis --mode placeholder --limit 20  # dry run: 대상만 출력, DB에 쓰지 않음
 ```
 
-## Run Batch Analysis
+`run_analysis`는 모델이 준비되지 않으면 실행을 거부합니다(종료 코드 2). 기사마다 따로 저장하므로
+한 기사가 실패해도 나머지 결과는 남고, 실패 목록을 출력한 뒤 종료 코드 1을 돌려줍니다.
+대상은 무작위 순서로 뽑아 계속 실패하는 기사가 큐 앞을 막지 않게 했습니다.
+빅카인즈 inbox의 정기 실행은 [Airflow README](../airflow/README.md)를 참고하세요.
+
+## 테스트
 
 ```bash
-python -m backend.run_analysis --mode service --limit 20
+DATABASE_URL=postgresql://x@localhost/x python -m unittest discover -s tests -v
 ```
 
-## 브라우저 본문 입력
-
-`POST /api/v1/news/analyze`는 기존 `{ "url": "..." }` 외에
-`{ "url": "...", "title": "기사 제목", "content": "기사 본문(100자 이상)" }`도 받습니다.
-본문을 전달하면 서버에서 URL을 다시 요청하지 않고 정제·키워드 추출 후 기존 분석/저장
-흐름을 사용합니다. 출처는 URL 호스트이며 `extraData.content_origin`에 browser/server를
-기록합니다. 기존 URL의 본문과 다르면 409로 거절하여 공유 결과가 조용히 덮어써지는 것을
-막습니다. 모델 미설치 placeholder 동작은 기존과 같습니다.
-
-## 수집 배치 검증
-
-프로젝트 루트에서 실행합니다. 수집은 AI 추론을 실행하지 않으며 기사와 키워드만 저장합니다.
-DB 스키마는 미리 준비되어 있어야 합니다(기존 API 실행 또는 스키마 초기화).
-
-```bash
-python -m backend.run_ingestion --query AI --limit 5
-# DB를 변경하지 않고 수집 결과 파일만 확인
-python -m backend.run_ingestion --query AI --limit 5 --skip-db-sync
-python -m unittest discover -s tests -v
-```
-
-결과는 `backend/runtime/output`에 JSON/CSV로 저장됩니다. 실패 기사는 별도 JSON으로
-기록하며, 전부 실패하면 명령이 실패합니다. limit은 1~1000이며 검색 결과가 부족하면
-요청 개수보다 적을 수 있습니다. 반복된 검색 페이지는 중단하고 최대 검색 범위를 제한합니다.
-같은 URL은 기존 DB 행을 갱신하므로 기사 행이 중복 생성되지 않습니다.
-현재 배치는 수정된 본문에 대한 기존 분석 무효화를 수행하지 않습니다.
-Airflow 수집 실행 방법은 [Airflow README](../airflow/README.md)를 참고하세요.
-AI 분석 연결 및 브라우저/서버 추출 본문 차이 정책은 후속 작업입니다.
-
-2026-10-22 검증: AI 검색 기사 5개 수집, Mecab 키워드 추출 및 DB 저장 성공.
-동일 배치 재저장 전후 기사 ID와 개수를 확인합니다.
+테스트는 DB에 연결하지 않고 모델도 로드하지 않습니다.

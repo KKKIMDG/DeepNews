@@ -75,3 +75,14 @@ class NewsAnalysis(Base):
     named_entities: Mapped[list] = mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
 
     news: Mapped[News] = relationship(back_populates="analysis")
+
+
+class NewsReport(Base):
+    __tablename__ = "news_report"
+    __table_args__ = (UniqueConstraint("news_id", "user_id", name="unique_news_report"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    news_id: Mapped[int] = mapped_column(ForeignKey("news.id", ondelete="CASCADE"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"))
+    reason: Mapped[str] = mapped_column(String(300), default="", server_default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
