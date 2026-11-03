@@ -17,6 +17,19 @@ export const BUNDLED_API_ORIGINS = ["http://127.0.0.1:8000", "http://localhost:8
 export const TAB_ANALYSIS_KEY_PREFIX = "deepnews.tabAnalysis.";
 export const TAB_OVERLAYS_KEY_PREFIX = "deepnews.tabOverlays.";
 export const ACTIVE_TAB_STORAGE_KEY = "deepnews.activeTabId";
+// 수집 도우미: tabs it opened (tabId -> request) and the latest result per article.
+export const COLLECT_TABS_KEY = "deepnews.collectTabs";
+export const COLLECT_RESULTS_KEY = "deepnews.collectResults";
+// storage.local: analyze every 네이버 뉴스 article the user opens.
+export const NAVER_AUTO_COLLECT_KEY = "deepnews.naverAutoCollect";
+export const COLLECT_LIMIT = 3;
+export const NAVER_NEWS_ORIGINS = [
+  "https://n.news.naver.com/*",
+  "https://m.news.naver.com/*",
+  "https://news.naver.com/*",
+  "https://m.sports.naver.com/*",
+  "https://m.entertain.naver.com/*"
+];
 
 // A LOADING state older than this was left behind by an interrupted service worker.
 export const STALE_LOADING_MS = 200000;
@@ -51,7 +64,10 @@ export const MESSAGE_TYPES = {
   GET_HISTORY: "GET_HISTORY",
   DELETE_HISTORY: "DELETE_HISTORY",
   GET_FEED: "GET_FEED",
-  SET_TOPICS: "SET_TOPICS"
+  SET_TOPICS: "SET_TOPICS",
+  SEARCH_NAVER_NEWS: "SEARCH_NAVER_NEWS",
+  COLLECT_OPEN: "COLLECT_OPEN",
+  GET_COLLECT_CANDIDATES: "GET_COLLECT_CANDIDATES"
 };
 
 // Codes are BigKinds top-level categories, as the backend (personalization.ranking.TOPIC_LABELS) expects.
@@ -107,4 +123,25 @@ export function expireStaleLoading(analysis, now = Date.now()) {
   const startedAt = Date.parse(analysis.startedAt || "");
   if (Number.isFinite(startedAt) && now - startedAt <= STALE_LOADING_MS) return analysis;
   return { ...analysis, status: ANALYSIS_STATUS.ERROR, error: STALE_LOADING_MESSAGE };
+}
+
+export function isNaverUrl(url) {
+  try {
+    const { hostname } = new URL(url);
+    return hostname === "naver.com" || hostname.endsWith(".naver.com");
+  } catch {
+    return false;
+  }
+}
+
+export function isNaverArticleUrl(url) {
+  try {
+    const { hostname, pathname, searchParams } = new URL(url);
+    if (["n.news.naver.com", "m.news.naver.com", "m.sports.naver.com", "m.entertain.naver.com"].includes(hostname)) {
+      return /\/article\/\d+\/\d+/.test(pathname);
+    }
+    return hostname === "news.naver.com" && pathname.endsWith("read.naver") && searchParams.has("aid");
+  } catch {
+    return false;
+  }
 }

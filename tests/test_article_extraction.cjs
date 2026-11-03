@@ -32,6 +32,21 @@ const withTime = run(`<title>도서관 개관 소식</title><time datetime="2026
 assert.equal(withTime.article.publishedAt, '2026-10-27T03:00:00.000Z');
 const noDate = run(`<title>도서관 개관 소식</title><meta name="pubdate" content="날짜 없음">${articleBody}`);
 assert.equal(noDate.article.publishedAt, '');
+// YTN style short article: the body is one <div> of <span>s and <br>s, so Readability prefers the <p>-rich ranking list.
+const lead = '인공지능 모델 개발사가 증권거래위원회에 상장 신청서를 제출하고 본격적인 기업공개 절차에 들어갔습니다. 회사는 다음 달 시장에 상장할 계획이라고 밝혔습니다.';
+const ranking = [...Array(10).keys()].map((i) => `<li><p><span>${i + 1}</span> 랭킹오염 기사 제목 ${i + 1}번째로 많이 본 뉴스가 여기에 있습니다, 시청자들의 관심이 집중되고 있습니다.</p></li>`).join('');
+const ytn = run(`<title>상장 신청</title><div class="news_view_wrap"><h2>상장 신청</h2><div id="CmAdContent" class="paragraph"><span>${lead}<br><br>${lead}<br><br>YTN 기자</span></div></div>
+ <div class="ranking"><h3>실시간 랭킹</h3><ol>${ranking}</ol></div>`);
+assert(ytn.ok); assert(ytn.article.content.startsWith('인공지능 모델')); assert(!ytn.article.content.includes('랭킹오염'));
+// Newspim style: Readability takes the wrapper that also holds other stories; the marked body is used instead.
+const best = `<p>${'베스트오염 다른 기사 본문입니다. 주식 결제주기가 단축된다는 내용이 길게 이어집니다. '.repeat(6)}</p>`.repeat(6);
+const newspim = run(`<title>도서관 개관 소식</title><article class="bodynews"><section itemprop="articleBody"><section id="aiSummary">AI 핵심 요약 요약오염</section>
+ <div id="news-contents"><p>${paragraph}</p><p>${paragraph}</p></div></section><div class="best"><h3>뉴스핌 베스트 기사</h3>${best}</div></article>`);
+assert(newspim.ok); assert(newspim.article.content.includes('도서관'));
+assert(!newspim.article.content.includes('베스트오염')); assert(!newspim.article.content.includes('요약오염'));
+// A Readability result that already holds the marked body is kept (it is the cleaner of the two).
+const marked = run(`<title>도서관 개관 소식</title><article><h1>도서관 개관 소식</h1><div class="article_body">${`<p>${paragraph}</p>`.repeat(5)}<div class="ad">광고오염</div></div></article>`);
+assert(marked.ok); assert(marked.article.content.includes('도서관'));
 assert(!run('<title>로그인</title><form>이메일 비밀번호</form>').ok);
 assert(!run('<title>짧은 페이지</title><article>짧음</article>').ok);
 console.log('PASS: generic/news/sports extraction, publishedAt, non-article rejection, live DOM preservation');

@@ -88,7 +88,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
 ## 아키텍처
 
 ### 요청 흐름 (실시간 분석)
-1. 확장 프로그램(`frontend/`, MV3): 사용자가 패널의 **현재 기사 분석** 버튼을 누를 때만 동작. 해당 origin 권한을 그때 요청하고, `content/extract-article.js`가 DOM **복사본**에서 제목·본문·발행 시각을 추출(네이버 선택자 우선, 그 외 로컬 번들된 Readability 0.6.0)한 뒤 `background/api-client.js`가 `POST /api/v1/news/analyze`로 `{url, title, content, publishedAt}`를 로그인 토큰(`Authorization: Bearer`)과 함께 보낸다. 모든 API 호출은 `api-client.js`(base `http://127.0.0.1:8000/api/v1`)에 모여 있다.
+1. 확장 프로그램(`frontend/`, MV3): 사용자가 패널의 **현재 기사 분석** 버튼을 누를 때만 동작. 해당 origin 권한을 그때 요청하고, `content/extract-article.js`가 DOM **복사본**에서 제목·본문·발행 시각을 추출(네이버 선택자 우선, 그 외 로컬 번들된 Readability 0.6.0. 언론사 본문 상자(`#news-contents`, `#CmAdContent` 등, 우선순위 순)가 있으면 Readability 결과가 그 글자 2-gram의 절반도 담지 못하거나 본문 상자보다 2배 넘게 길 때 본문 상자를 쓴다 — YTN의 '실시간 랭킹', 뉴스핌의 '베스트 기사' 전문이 섞이는 문제 대응)한 뒤 `background/api-client.js`가 `POST /api/v1/news/analyze`로 `{url, title, content, publishedAt}`를 로그인 토큰(`Authorization: Bearer`)과 함께 보낸다. 모든 API 호출은 `api-client.js`(base `http://127.0.0.1:8000/api/v1`)에 모여 있다.
    - service worker는 분석·팝업 상태를 **탭별로** `chrome.storage.session`(`deepnews.tabAnalysis.<tabId>` 등)에 두고, 패널이 보고 있는 탭(`deepnews.activeTabId`)의 상태만 `storage.local`의 `STORAGE_KEY`로 복사한다. 패널은 이 값을 그린다. 분석 요청에 tabId를 넘기면 그 탭이 현재 탭이 된다.
    - 메시지 발신자 검증: 확장 프로그램 페이지(`chrome-extension://<id>/` URL)에서 온 메시지만 처리하고, content script에서는 `OVERLAY_CLOSED`만 받는다. 토큰은 영속 로그인을 위해 `storage.local`에 두며 content script는 읽지 않는다.
    - 패널은 로그아웃 상태에서 캐릭터 '딥이'(`panel/mascot.js`, 인라인 SVG)의 인사와 2단계 회원가입(계정 → 관심 분야·키워드)을 보여 주고, 로그인하면 분석·맞춤·설정 탭으로 나뉜다. 애니메이션은 설정의 "캐릭터 애니메이션"(`deepnews.motion`, 미설정 시 OS의 동작 줄이기 설정을 따름)으로 끄며, 꺼지면 `:root[data-motion="off"]`가 모든 animation/transition을 없앤다. 관심 분야 코드 목록은 `constants.js::INTEREST_TOPICS`와 백엔드 `TOPIC_LABELS`가 같아야 한다.
@@ -109,13 +109,14 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
   - 점수 = 0.6×현재 기사 TF-IDF 코사인 + 0.4×관심 프로필 코사인 + 관심 키워드 보너스 + 관심 분야 보너스 + 최신성 보너스.
   - 관심 프로필은 읽은 기록으로 만들며, 반감기는 14일이고 여러 번 읽은 기사일수록 가중치가 커진다.
   - **콜드 스타트 보정**: 회원가입 요청(`topics`, `keywords`)이나 `PUT /me/topics`로 관심 분야(빅카인즈 대분류 8개, `ranking.TOPIC_LABELS`, 테이블 `user_interest_topic`)를 고른다. 가입 때 넣은 키워드는 관심 키워드(include)로 저장된다. 분야별 대표어(`ranking.topic_terms`, 분야 안 빈도×log lift 상위 25개, 프로세스 캐시 6시간)를 프로필에 `0.35×강도`로 섞고, 같은 분야 기사에는 `0.15×강도` 보너스를 준다. 강도 `topic_strength`는 읽은 기사 0건일 때 1.0이고 10건이면 0.5, 최소 0.3이다. 그래서 나중에 분야를 바꿔도 반영된다. 분야 기사는 키워드가 겹치지 않아도 후보로 들어온다(`repository.topic_news_ids`).
+  - 패널의 분석 탭은 현재 기사의 추천을 언론사(`publisher`, 빅카인즈 `extraData.publisher`, 없으면 호스트명)별로 묶어 보여 준다. 묶음 순서는 각 언론사의 최상위 기사 순위를 따른다. 네이버 기사를 보고 있으면 service worker가 네이버 호스트 기사만 추천으로 남긴다.
   - 맞춤 피드(현재 기사 없음)에서는 같은 분야를 고를 때마다 0.06씩 깎아 한 분야가 목록을 독차지하지 않게 한다. 현재 기사의 관련 기사 목록은 관련도 순서를 유지한다.
   - 추천에서 빼는 것: 이미 읽은 기사, 제외 키워드가 든 기사, 사용자별 광고 확률 기준값(`app_user.ad_filter_threshold`, 1.0이면 필터 끔) 이상인 기사.
   - 같은 사건을 다룬 다른 언론사 기사(제목 2글자 묶음 Jaccard ≥ 0.25 또는 키워드 코사인 ≥ 0.9)는 추천 목록 안에서 하나만 남긴다. 현재 기사나 최근 읽은 기사와 같은 사건인 기사도 뺀다.
 - 저장된 키워드에는 Regex 분석기가 남긴 잡음(`안경을`, `있다`)이 섞여 있다. 개인화 계층은 `ranking.normalize_term`으로 이를 정리해서 쓰며(조사 제거, 서술어·일반어 제외), 원본 `keyword` 테이블은 그대로 둔다.
 
 ### 백엔드 구조 (`backend/`)
-- 라우트: `POST /api/v1/news/analyze`, `POST /api/v1/news/{id}/report`, `/api/v1/auth/*`, `/api/v1/me/*`, `/health`. `crawl`·`analysis` 도메인에는 라우터가 없고 텍스트 정제(`crawl/extractor.py`, 네트워크 코드 없음)와 모델 추론만 남아 있다.
+- 라우트: `POST /api/v1/news/analyze`, `POST /api/v1/news/{id}/report`, `/api/v1/auth/*`, `/api/v1/me/*`, `GET /api/v1/naver/news`, `GET /api/v1/collect/candidates`, `/health`. `crawl`·`analysis` 도메인에는 라우터가 없고 텍스트 정제(`crawl/extractor.py`, 네트워크 코드 없음)와 모델 추론만 남아 있다.
 - **import 시 부작용 주의**: `backend.main`을 import하면 `ensure_schema()`가 `backend/sql/*.sql` 중 `schema_migration` 테이블에 기록되지 않은 파일만 이름 순서대로 실행한다(advisory lock으로 직렬화). 기존 DB에서는 처음 한 번 전부 다시 실행되므로 각 파일은 계속 여러 번 실행해도 안전해야 한다(`if not exists`). 또 `domains/analysis/service.py` import 시 모델을 즉시 로드한다. 모델/torch가 없으면 `AD_MODEL_READY`/`SUMMARY_MODEL_READY=False`가 되고 분석 요청은 503이다. `/health`는 모델 상태와 DB 연결(`select 1`)을 보여 주며 서버 경로는 노출하지 않는다. `backend/__init__.py`는 `app`을 lazy하게 노출해 배치 도구 import가 API를 띄우지 않게 한다.
 - DB 접근 경로가 두 가지다: API는 SQLAlchemy(`database.py`, `domains/news/models.py`, `repository.py`), 배치는 psycopg2 직접 사용(`batch/storage.py`). 스키마 변경 시 양쪽을 모두 맞춰야 한다.
 - 테이블:
@@ -126,7 +127,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
 ### 기사 데이터 출처와 수집 정책
 - **네이버 자동 수집 금지**: 2026-10-30에 확인한 결과, `search.naver.com`, `news.naver.com`, `n.news.naver.com`의 robots.txt가 모든 봇에 `Disallow: /`이다. AI·RAG 목적의 봇 접근도 명시적으로 금지되어 있다. 네이버 약관에도 자동화 수집 금지 조항이 있으며 학술 목적 예외는 없다.
   - 그래서 네이버 수집 배치(`run_ingestion`, `batch/pipeline.py`, 루트 `naver_news_pipeline.py`), 수집 DAG, 서버 크롤링 API를 모두 삭제했다. 네이버 기사는 사용자가 직접 연 페이지를 확장 프로그램으로 분석할 때만 들어온다.
-  - 네이버 공식 검색 API도 2026-09-07 개정 특약상 결과의 저장·DB화·AI 입력·재정렬이 금지라서 후보 수집에 쓰지 않는다(2차 자료로 확인, 원문 미확인).
+  - 네이버 공식 검색 API도 후보 수집에 쓰지 않는다. NAVER API 이용약관(2026-10-07 개정) 검색 API 특약 2.2·2.3이 결과의 복사·저장·캐싱(파생물 포함), AI 입력·학습·평가, 순위·내용 수정을 금지한다. 허용되는 임시 보관은 기기 24시간, 서버 이력 조회용 21일까지다(2.4). 학술·비상업 예외는 없다(2026-11-03 원문 확인). 개발자센터 신규 신청은 2026-07-30에 마감됐고 이후는 NCP NAVER API HUB 약관을 따른다.
 - **빅카인즈(한국언론진흥재단) 엑셀이 기사 후보의 정식 출처다.**
   - 사람이 웹에서 직접 내려받는다. 1회 최대 2만 건이고, 저작권 때문에 본문은 앞 200자만 들어 있다.
   - `batch/bigkinds.py`가 행을 파싱한다. `분석제외 여부`가 표시된 행과 URL이 없는 행은 건너뛰고, `뉴스 식별자`는 반드시 `dtype=str`로 읽는다.
@@ -148,6 +149,18 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
 
 ### 팀 테스트용 외부 공개 (임시)
 - GPU 서버에는 포트를 열지 않는다. 로컬 PC의 SSH 터널(`127.0.0.1:8000`) 위에 Cloudflare 임시 터널(`cloudflared tunnel --url http://127.0.0.1:8000`)을 띄워 `https://*.trycloudflare.com` 주소를 받는다. 이 주소는 터널을 다시 띄울 때마다 바뀐다.
+### 수집 도우미 (`frontend/src/collect/`, `domains/collect`)
+- 패널 설정 탭의 "수집 도우미 열기"로 여는 확장 프로그램 페이지. `GET /api/v1/collect/candidates`(로그인 필요)가 본문이 없는 빅카인즈 후보(`content_partial`)를 언론사별 개수와 함께 발행일 역순으로 준다.
+- 사용자가 "열기"나 "다음 기사 열기"를 **누를 때마다 기사 하나**를 백그라운드 탭으로 연다(`COLLECT_OPEN`). service worker가 그 탭의 로드 완료 때 `analyzeTab`을 한 번 돌리고, 성공하면 탭을 닫는다(옵션). 실패하면 사용자가 볼 수 있도록 탭을 남긴다. 동시 진행은 `COLLECT_LIMIT`(3)건이다. 요청·결과는 `storage.session`의 `deepnews.collectTabs`·`deepnews.collectResults`에 두고 `withCollectStorage`로 직렬화한다.
+- 언론사 리디렉트에 대비해 후보 탭은 후보 URL로 제출한다(`analyzeTab(tabId, submitUrl)`). 서버의 앞 200자 일치 검사가 그대로 적용된다.
+- "네이버 기사 열면 자동 분석"(`deepnews.naverAutoCollect`)을 켜면, 사용자가 직접 연 네이버 기사(`isNaverArticleUrl`)를 로드될 때 분석한다. 네이버 권한(`NAVER_NEWS_ORIGINS`)은 켤 때 받는다.
+- **자동으로 여러 기사를 연달아 여는 기능(일괄 열기, 타이머, 다음 기사 자동 진행)은 넣지 않는다.** 그러면 사람이 연 페이지가 아니라 크롤링이 된다. 네이버 검색 API 결과를 수집 목록으로 쓰지 않는다(특약 2.3).
+
+### 네이버 뉴스 검색 (`domains/naver_search`)
+- 네이버 기사를 분석하면 패널이 `GET /api/v1/naver/news`(로그인 필요, `sort=sim|date`, 사용자당 10분에 60회)로 검색해 별도 블록에 보여 준다. 개인화는 **검색어에만** 넣는다: ① 기사 키워드 상위 2개 + 첫 관심 키워드(결과가 없으면 기사 키워드 3개로 다시 검색) ② 관심 키워드(수동 → 읽은 기록 → 관심 분야 순) 상위 3개를 각각 최신순 3건. 목록마다 검색어를 함께 표시한다. 키는 서버 `backend/.env`의 `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`이며 `/health`의 `naver_search_ready`로 확인한다. 키 값은 저장소에 적지 않는다.
+- 검색 API 특약 때문에 결과는 DB·로그·`chrome.storage`에 남기지 않고(패널 메모리에만 있다), 모델이나 추천 점수에 넣지 않으며, 네이버가 준 순서·문구 그대로 보여 준다(`<b>` 태그와 HTML 엔티티만 정리). 언론사별 묶음, 중복 제거, 필터링을 이 블록에 적용하지 않는다. 출처(원문 호스트)와 원문 링크, "검색 결과 제공: NAVER" 표시를 유지한다. 이 블록과 문구는 네이버 기사를 보고 있을 때만 나온다.
+- 제목 링크는 네이버가 호스팅하는 기사면 `n.news.naver.com`(`naverUrl`)으로, 아니면 원문으로 간다.
+
 - 공개하는 동안 서버 `backend/.env`에 `SIGNUP_INVITE_CODE`를 둔다. 값이 있으면 회원가입에 초대 코드가 필요하고, `/health`의 `signup_invite_required`로 알 수 있다. 공개를 끝내면 줄을 지우고 API를 재시작한다. 코드 값과 공개 주소는 저장소에 적지 않는다.
 - 확장 프로그램은 패널의 "서버 주소" 설정(`deepnews.apiBase`, 기본 `http://127.0.0.1:8000`)으로 API 주소를 바꾼다. manifest에 없는 서버는 저장할 때 그 origin 권한을 요청하고, 서버를 바꾸면 로그아웃한다(계정은 서버 DB에 그대로 있다).
 

@@ -26,6 +26,8 @@ class RecommendationPayload(BaseModel):
     score: float
     reasons: list[str]
     adProbability: float | None = None
+    # BigKinds 언론사 name; empty for articles that only came in through the extension.
+    publisher: str = ""
 
 
 class InterestPayload(BaseModel):

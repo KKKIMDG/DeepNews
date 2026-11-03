@@ -23,6 +23,9 @@ class Settings:
     keyword_limit: int = 8
     # When set, signup requires this code; used while the API is reachable from outside for team testing.
     signup_invite_code: str = ""
+    # NAVER search API keys for the live 네이버 뉴스 검색 section; results are never stored.
+    naver_client_id: str = ""
+    naver_client_secret: str = ""
     keyword_stopwords: frozenset[str] = frozenset({
         "이번",
         "관련",
@@ -61,4 +64,6 @@ def resolve_database_url() -> str:
 settings = Settings(
     database_url=resolve_database_url(),
     signup_invite_code=os.getenv("SIGNUP_INVITE_CODE", "").strip(),
+    naver_client_id=os.getenv("NAVER_CLIENT_ID", "").strip(),
+    naver_client_secret=os.getenv("NAVER_CLIENT_SECRET", "").strip(),
 )

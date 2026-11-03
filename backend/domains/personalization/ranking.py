@@ -74,6 +74,7 @@ class Candidate:
     ad_probability: float | None
     keywords: dict[str, int]
     category: str = ""
+    publisher: str = ""
 
 
 @dataclass(frozen=True)

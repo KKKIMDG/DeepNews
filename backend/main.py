@@ -6,7 +6,9 @@ from sqlalchemy import text
 from .config import settings
 from .database import engine, ensure_schema
 from .domains.auth.router import router as auth_router
+from .domains.collect.router import router as collect_router
 from .domains.personalization.router import router as personalization_router
+from .domains.naver_search.router import router as naver_search_router
 from .domains.news.router import router as news_router
 from .domains.analysis.service import AD_MODEL_READY, SUMMARY_MODEL_READY
 
@@ -18,6 +20,8 @@ app = FastAPI()
 app.include_router(news_router)
 app.include_router(auth_router)
 app.include_router(personalization_router)
+app.include_router(naver_search_router)
+app.include_router(collect_router)
 
 
 @app.get("/health")
@@ -35,4 +39,5 @@ def health():
         "summary_model_ready": SUMMARY_MODEL_READY,
         "database_ready": database_ready,
         "signup_invite_required": bool(settings.signup_invite_code),
+        "naver_search_ready": bool(settings.naver_client_id and settings.naver_client_secret),
     }

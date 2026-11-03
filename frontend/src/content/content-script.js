@@ -13,6 +13,7 @@ const NAVER_BODY_SELECTORS = [
 ];
 
 const GENERIC_BODY_SELECTORS = [
+  "#news-contents",
   '[itemprop="articleBody"]',
   "#articleBody",
   "#article-view-content-div",

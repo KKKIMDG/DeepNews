@@ -5,6 +5,7 @@ import {
   deleteHistory,
   deleteKeywordPreference,
   exportMyData,
+  fetchCollectCandidates,
   fetchHistory,
   fetchProfile,
   fetchRecommendations,
@@ -12,6 +13,7 @@ import {
   logout,
   reportNews,
   requestBackendAnalysis,
+  searchNaverNews,
   setKeywordPreference,
   setTopics,
   signup,
@@ -21,6 +23,11 @@ import { buildHighlightPayload } from "./keyword-analysis.js";
 import {
   ACTIVE_TAB_STORAGE_KEY,
   ANALYSIS_STATUS,
+  COLLECT_LIMIT,
+  COLLECT_RESULTS_KEY,
+  COLLECT_TABS_KEY,
+  NAVER_AUTO_COLLECT_KEY,
+  isNaverArticleUrl,
   AUTH_STORAGE_KEY,
   DEFAULT_AUTH,
   DEFAULT_ANALYSIS,
@@ -29,6 +36,7 @@ import {
   OVERLAY_STATE_STORAGE_KEY,
   STORAGE_KEY,
   TAB_ANALYSIS_KEY_PREFIX,
+  isNaverUrl,
   TAB_OVERLAYS_KEY_PREFIX,
   expireStaleLoading
 } from "../shared/constants.js";
@@ -84,10 +92,106 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   analysesInProgress.delete(tabId);
+  collectStarted.delete(tabId);
   void chrome.storage.session
     .remove([tabAnalysisKey(tabId), tabOverlaysKey(tabId)])
     .catch(() => {});
+  void forgetCollectTab(tabId, "분석 전에 탭이 닫혔습니다.").catch(() => {});
 });
+
+// 수집 도우미: a tab the user opened from the collector page, or a 네이버 뉴스 article the user opened while
+// auto-collect is on, is analyzed once after it loads. Nothing here opens a page without the user's click.
+const collectStarted = new Map();
+let collectQueue = Promise.resolve();
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete") return;
+  void collectIfRequested(tabId, tab).catch(() => {});
+});
+
+// Serializes read-modify-write of the collector's storage.session records.
+function withCollectStorage(update) {
+  const run = collectQueue.then(async () => {
+    const stored = await chrome.storage.session.get([COLLECT_TABS_KEY, COLLECT_RESULTS_KEY]);
+    const state = { tabs: stored[COLLECT_TABS_KEY] || {}, results: stored[COLLECT_RESULTS_KEY] || {} };
+    const result = await update(state);
+    await chrome.storage.session.set({ [COLLECT_TABS_KEY]: state.tabs, [COLLECT_RESULTS_KEY]: state.results });
+    return result;
+  });
+  collectQueue = run.catch(() => {});
+  return run;
+}
+
+function putCollectResult(results, key, result) {
+  results[key] = { ...results[key], ...result, updatedAt: new Date().toISOString() };
+  const keys = Object.keys(results).sort((a, b) => results[b].updatedAt.localeCompare(results[a].updatedAt));
+  for (const old of keys.slice(100)) delete results[old];
+}
+
+async function openForCollect({ newsId, url, closeAfter }) {
+  if (!Number.isInteger(newsId) || !isSupportedArticleUrl(url)) throw new Error("기사 주소가 올바르지 않습니다.");
+  if (!(await getAuthState()).token) throw new Error("로그인 후 수집해 주세요.");
+  return withCollectStorage(async ({ tabs, results }) => {
+    if (Object.keys(tabs).length >= COLLECT_LIMIT) {
+      throw new Error(`동시에 ${COLLECT_LIMIT}건까지 분석합니다. 진행 중인 기사가 끝나면 다시 눌러 주세요.`);
+    }
+    const tab = await chrome.tabs.create({ url, active: false });
+    const key = String(newsId);
+    tabs[tab.id] = { key, url, closeAfter: Boolean(closeAfter) };
+    putCollectResult(results, key, { status: "opening", url, error: "" });
+    return { tabId: tab.id };
+  });
+}
+
+async function forgetCollectTab(tabId, closedMessage = "") {
+  await withCollectStorage(({ tabs, results }) => {
+    const request = tabs[tabId];
+    if (!request) return;
+    delete tabs[tabId];
+    if (closedMessage && results[request.key]?.status !== "done") {
+      putCollectResult(results, request.key, { status: "error", error: closedMessage });
+    }
+  });
+}
+
+async function collectIfRequested(tabId, tab) {
+  const url = withoutHash(tab?.url);
+  if (!url || collectStarted.get(tabId) === url || analysesInProgress.has(tabId)) return;
+
+  // Read through the queue: a fast page can finish loading before openForCollect has saved its request.
+  const request = await withCollectStorage(({ tabs }) => tabs[tabId]);
+  if (!request && !(await shouldAutoCollectNaver(url))) return;
+
+  const key = request?.key || url;
+  collectStarted.set(tabId, url);
+  await withCollectStorage(({ results }) => putCollectResult(results, key, { status: "loading", url, title: tab.title || "" }));
+  try {
+    const analysis = await analyzeTab(tabId, request?.url || "");
+    await withCollectStorage(({ tabs, results }) => {
+      delete tabs[tabId];
+      putCollectResult(results, key, {
+        status: "done",
+        title: analysis.article?.title || tab.title || "",
+        cached: analysis.cached,
+        error: ""
+      });
+    });
+    if (request?.closeAfter) await chrome.tabs.remove(tabId).catch(() => {});
+  } catch (error) {
+    // The tab stays open so the user can see what the page showed.
+    await withCollectStorage(({ tabs, results }) => {
+      delete tabs[tabId];
+      putCollectResult(results, key, { status: "error", error: error?.message || "분석에 실패했습니다." });
+    });
+  }
+}
+
+async function shouldAutoCollectNaver(url) {
+  if (!isNaverArticleUrl(url)) return false;
+  if (!(await chrome.storage.local.get(NAVER_AUTO_COLLECT_KEY))[NAVER_AUTO_COLLECT_KEY]) return false;
+  if (!(await getAuthState()).token) return false;
+  return chrome.permissions.contains({ origins: [`${new URL(url).origin}/*`] });
+}
 
 const AUTH_REQUIRED_HANDLERS = {
   [MESSAGE_TYPES.GET_PROFILE]: fetchProfile,
@@ -99,7 +203,9 @@ const AUTH_REQUIRED_HANDLERS = {
   [MESSAGE_TYPES.DELETE_HISTORY]: deleteHistory,
   [MESSAGE_TYPES.GET_FEED]: fetchRecommendations,
   [MESSAGE_TYPES.CHANGE_PASSWORD]: changePassword,
-  [MESSAGE_TYPES.EXPORT_MY_DATA]: exportMyData
+  [MESSAGE_TYPES.EXPORT_MY_DATA]: exportMyData,
+  [MESSAGE_TYPES.SEARCH_NAVER_NEWS]: searchNaverNews,
+  [MESSAGE_TYPES.GET_COLLECT_CANDIDATES]: fetchCollectCandidates
 };
 
 const EXTENSION_PAGE_HANDLERS = {
@@ -116,7 +222,8 @@ const EXTENSION_PAGE_HANDLERS = {
   [MESSAGE_TYPES.DELETE_ACCOUNT]: (payload) =>
     withAuth((token) => deleteAccount(token, payload.password || "")).then(() => clearAuth()),
   [MESSAGE_TYPES.REPORT_NEWS]: handleReportNews,
-  [MESSAGE_TYPES.SET_OVERLAY_STATE]: (payload) => updateTabOverlays(payload.tabId, payload.state)
+  [MESSAGE_TYPES.SET_OVERLAY_STATE]: (payload) => updateTabOverlays(payload.tabId, payload.state),
+  [MESSAGE_TYPES.COLLECT_OPEN]: openForCollect
 };
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -257,7 +364,9 @@ async function handleTabUrlChange(tabId, url) {
   await chrome.tabs.sendMessage(tabId, { type: MESSAGE_TYPES.HIDE_ALL_OVERLAYS }).catch(() => {});
 }
 
-async function analyzeTab(requestedTabId) {
+// submitUrl: the collector's candidate URL, so a publisher redirect still fills that BigKinds row
+// (the server accepts it only if the body matches the stored lead).
+async function analyzeTab(requestedTabId, submitUrl = "") {
   const auth = await getAuthState();
   if (!auth.token) throw new Error("로그인 후 분석해 주세요.");
 
@@ -295,7 +404,7 @@ async function analyzeTab(requestedTabId) {
 
     const backendResult = await requestBackendAnalysis(
       {
-        url: article.url,
+        url: submitUrl || article.url,
         title: article.title,
         content: article.content,
         publishedAt: article.publishedAt || ""
@@ -356,13 +465,17 @@ async function isCurrentRun(tabId, runId) {
 
 function buildAnalysis(result, articleInfo) {
   const score = Number(result?.adLikelihood?.score);
+  const recommendations = Array.isArray(result?.recommendations) ? result.recommendations : [];
   return {
     ...DEFAULT_ANALYSIS,
     status: ANALYSIS_STATUS.READY,
     article: articleInfo,
     keywords: normalizeKeywords(result?.keywords),
     summary: typeof result?.summary === "string" ? result.summary : "",
-    recommendations: Array.isArray(result?.recommendations) ? result.recommendations : [],
+    // On 네이버 뉴스 the reader stays inside NAVER: only NAVER-hosted articles are recommended there.
+    recommendations: isNaverUrl(articleInfo?.url)
+      ? recommendations.filter((item) => isNaverUrl(item?.url))
+      : recommendations,
     adLikelihood: {
       label: String(result?.adLikelihood?.label || ""),
       score: Number.isFinite(score) ? score : -1

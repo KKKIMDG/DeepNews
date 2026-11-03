@@ -42,6 +42,8 @@ DB_SSLMODE=require
 | `POST /news/{news_id}/report` | 분석 결과 신고 |
 | `/auth/{signup,login,logout,me,password}` | 이메일/비밀번호 계정, Bearer 세션 토큰 |
 | `/me/{profile,keywords,topics,settings,history,recommendations,export}` | 개인화 설정(관심 분야 포함)과 추천 |
+| `GET /naver/news?query=&display=` | 로그인 필요. 네이버 뉴스 검색 API 결과를 저장 없이 그대로 전달 (`NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` 필요) |
+| `GET /collect/candidates?publisher=&limit=&offset=` | 로그인 필요. 본문이 없는 빅카인즈 후보 기사와 언론사별 개수(수집 도우미용) |
 | `GET /health` | 모델 로드 상태 |
 
 - URL은 `canonical_article_url`로 정규화합니다(네이버 기사 URL 형태를 하나로 통일).

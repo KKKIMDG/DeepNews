@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepNews 수집 도우미</title>
+    <link rel="stylesheet" href="../panel/panel.css" />
+    <link rel="stylesheet" href="./collect.css" />
+  </head>
+  <body>
+    <main class="collect">
+      <header class="collect-head">
+        <h1>수집 도우미</h1>
+        <p id="collect-status" class="caption">불러오는 중입니다.</p>
+      </header>
+
+      <section class="block" aria-labelledby="bigkinds-title">
+        <header class="block-head">
+          <h2 id="bigkinds-title">본문이 없는 빅카인즈 기사</h2>
+          <span id="in-flight" class="caption"></span>
+        </header>
+        <p class="caption">
+          기사를 직접 열면 확장 프로그램이 본문을 읽어 분석하고 저장합니다. 한 번 누를 때 기사 하나가 열리고,
+          동시에 3건까지 분석합니다. 사이트를 처음 열 때는 본문 읽기 권한을 묻습니다.
+        </p>
+        <div class="collect-controls">
+          <label class="field">
+            <span>언론사</span>
+            <select id="publisher"></select>
+          </label>
+          <label class="check">
+            <input id="close-after" type="checkbox" checked />
+            <span>저장되면 탭 닫기</span>
+          </label>
+          <button id="open-next" class="primary-button" type="button">다음 기사 열기</button>
+        </div>
+        <p id="collect-message" class="auth-message" role="status"></p>
+        <ul id="candidates" class="collect-list"></ul>
+        <button id="load-more" class="chip-button" type="button" hidden>더 보기</button>
+      </section>
+
+      <section class="block" aria-labelledby="naver-collect-title">
+        <header class="block-head">
+          <h2 id="naver-collect-title">네이버 뉴스</h2>
+        </header>
+        <p class="caption">
+          켜 두면 직접 연 네이버 뉴스 기사를 열 때마다 자동으로 분석해 저장합니다. 목록이나 검색 결과에서 기사를 골라
+          여는 것은 직접 하셔야 합니다.
+        </p>
+        <div class="collect-controls">
+          <label class="check">
+            <input id="naver-auto" type="checkbox" />
+            <span>네이버 기사 열면 자동 분석</span>
+          </label>
+          <button id="open-naver" class="chip-button" type="button">네이버 뉴스 열기</button>
+        </div>
+        <p id="naver-message" class="auth-message" role="status"></p>
+      </section>
+
+      <section class="block" aria-labelledby="recent-title">
+        <header class="block-head">
+          <h2 id="recent-title">최근 처리</h2>
+        </header>
+        <ul id="recent" class="collect-list"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="./collect.js"></script>
+  </body>
+</html>

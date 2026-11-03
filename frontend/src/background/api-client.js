@@ -145,6 +145,16 @@ export async function deleteHistory(token, { newsId }) {
   return apiRequest(`/me/history/${encodeURIComponent(newsId)}`, { method: "DELETE", token });
 }
 
+export async function searchNaverNews(token, { query, display = 5, sort = "sim" }) {
+  const params = new URLSearchParams({ query, display: String(display), sort });
+  return apiRequest(`/naver/news?${params}`, { token });
+}
+
+export async function fetchCollectCandidates(token, { publisher = "", limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams({ publisher, limit: String(limit), offset: String(offset) });
+  return apiRequest(`/collect/candidates?${params}`, { token });
+}
+
 export async function fetchRecommendations(token, { limit = 10 } = {}) {
   return apiRequest(`/me/recommendations?limit=${limit}`, { token });
 }

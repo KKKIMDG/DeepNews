@@ -15,7 +15,8 @@ import {
   STALE_LOADING_MS,
   STORAGE_KEY,
   THEME_STORAGE_KEY,
-  expireStaleLoading
+  expireStaleLoading,
+  isNaverUrl
 } from "../shared/constants.js";
 import { mountMascots, typeText, wait } from "./mascot.js";
 
@@ -111,6 +112,11 @@ const topicStrengthFillNode = document.getElementById("topic-strength-fill");
 const topicMessageNode = document.getElementById("topic-message");
 const displaySettingsNode = document.getElementById("display-settings");
 const serverSettingsNode = document.getElementById("server-settings");
+const recommendationsBlockNode = document.getElementById("recommendations-block");
+const naverBlockNode = document.getElementById("naver-block");
+const naverSearchNode = document.getElementById("naver-search");
+const naverSearchCaptionNode = document.getElementById("naver-search-caption");
+const naverResultsNode = document.getElementById("naver-results");
 const tabButtonNodes = [...document.querySelectorAll(".tab-button")];
 const tabPanelNodes = [...document.querySelectorAll(".tab-panel")];
 
@@ -126,6 +132,9 @@ let staleLoadingTimer = null;
 let lastAnalysisMessageKey = "";
 // Keyword edits and manual refreshes overlap; only the newest feed request may render.
 let feedRequestId = 0;
+// NAVER search results live only in this panel's memory and belong to one article (검색 API 특약 2.3, 2.4).
+let naverResultsUrl = "";
+let naverRequestId = 0;
 let signupStep = 1;
 let signupKeywords = [];
 // A newer greeting (e.g. after toggling motion) cancels the one still typing.
@@ -352,6 +361,10 @@ hideAllPopupsNode?.addEventListener("click", () => {
   void hideAllPopups();
 });
 
+naverSearchNode?.addEventListener("click", () => {
+  void searchNaverNews();
+});
+
 refreshFeedNode?.addEventListener("click", () => {
   void loadFeed();
 });
@@ -451,6 +464,7 @@ function render(analysis) {
   renderChart(normalizedAnalysis);
   renderSummary(normalizedAnalysis);
   renderRecommendations(normalizedAnalysis);
+  renderNaverSearch(normalizedAnalysis);
   renderAdLikelihood(normalizedAnalysis);
 }
 
@@ -1169,7 +1183,27 @@ function renderRecommendations(analysis) {
     return;
   }
 
-  recommendationsNode.innerHTML = renderArticleItems(recommendations);
+  recommendationsNode.innerHTML = groupByPublisher(recommendations)
+    .map(([publisher, items]) => `<li class="publisher-group"><h3>${escapeHtml(publisher)}</h3>
+      <ul class="article-list">${renderArticleItems(items)}</ul></li>`)
+    .join("");
+}
+
+// Groups follow each publisher's best-ranked article, and items keep their rank inside a group.
+function groupByPublisher(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const publisher = item.publisher || publisherFromUrl(item.url);
+    if (!groups.has(publisher)) groups.set(publisher, []);
+    groups.get(publisher).push(item);
+  }
+  return [...groups];
+}
+
+function publisherFromUrl(url) {
+  if (isNaverUrl(url)) return "네이버뉴스";
+  try { return new URL(url).hostname.replace(/^www\./, ""); }
+  catch { return "기타"; }
 }
 
 function renderArticleItems(items) {
@@ -1192,6 +1226,104 @@ function adBadge(adProbability) {
   // Matches the backend "검토 필요" boundary (ad_label_for >= 0.4).
   if (!Number.isFinite(adProbability) || adProbability < 0.4) return "";
   return `<span class="ad-badge">광고성 ${Math.round(adProbability * 100)}%</span>`;
+}
+
+const NAVER_INTEREST_LISTS = 3;
+
+function articleTerms(analysis, count = 3) {
+  return analysis.keywords.slice(0, count).map((keyword) => keyword.term);
+}
+
+function renderNaverSearch(analysis) {
+  const articleUrl = analysis.article?.url || "";
+  const onNaver = isNaverUrl(articleUrl);
+  // The NAVER search section and its notice appear only while a 네이버 뉴스 article is open.
+  naverBlockNode.hidden = !onNaver;
+  recommendationsBlockNode.hidden = onNaver && !analysis.recommendations.length;
+  const ready = onNaver && analysis.status === ANALYSIS_STATUS.READY && articleTerms(analysis).length > 0;
+  naverSearchNode.disabled = !ready;
+  if (articleUrl === naverResultsUrl) return;
+
+  naverResultsUrl = "";
+  naverRequestId += 1;
+  naverResultsNode.replaceChildren();
+  naverSearchCaptionNode.textContent = "기사를 분석하면 핵심 키워드와 관심 키워드로 네이버 뉴스를 검색합니다.";
+  if (ready && latestAuth.token) void searchNaverNews();
+}
+
+// Personalization only shapes the queries; every list is shown exactly as NAVER returns it (특약 2.2, 2.3).
+async function searchNaverNews() {
+  const keywords = articleTerms(latestAnalysis);
+  if (!keywords.length) return;
+  const requestId = ++naverRequestId;
+  // Claimed up front so re-renders during the request do not start another search for the same article.
+  naverResultsUrl = latestAnalysis.article?.url || "";
+  naverSearchNode.disabled = true;
+  naverSearchCaptionNode.textContent = "네이버 뉴스를 검색하고 있습니다.";
+  try {
+    const profile = await sendPersonalization(MESSAGE_TYPES.GET_PROFILE).catch(() => null);
+    const interests = interestTerms(profile, keywords);
+    const lead = interests[0];
+    let query = lead ? [...keywords.slice(0, 2), lead].join(" ") : keywords.join(" ");
+    let items = await searchNaver(query, "sim", 5);
+    if (!items.length && lead) {
+      // The interest made the query too narrow; search the article's own keywords instead.
+      query = keywords.join(" ");
+      items = await searchNaver(query, "sim", 5);
+    }
+    const groups = [{ title: lead && query.endsWith(lead) ? `이 기사 + 관심 키워드 '${lead}'` : "이 기사 관련 뉴스", query, items }];
+    const interestGroups = await Promise.all(
+      interests.slice(0, NAVER_INTEREST_LISTS).map((term) =>
+        searchNaver(term, "date", 3)
+          .then((found) => ({ title: `관심 키워드 '${term}' 최신 뉴스`, query: term, items: found }))
+          .catch(() => null)
+      )
+    );
+    groups.push(...interestGroups.filter(Boolean));
+    if (requestId !== naverRequestId) return;
+    naverSearchCaptionNode.textContent = interests.length
+      ? "관심 키워드를 넣은 검색어로 찾았습니다."
+      : "맞춤 탭에서 관심 키워드나 관심 분야를 정하면 관심사별 뉴스도 함께 찾아 드립니다.";
+    naverResultsNode.innerHTML = groups.map(renderNaverGroup).join("");
+  } catch (error) {
+    if (requestId === naverRequestId) naverSearchCaptionNode.textContent = error.message;
+  } finally {
+    if (requestId === naverRequestId) naverSearchNode.disabled = false;
+  }
+}
+
+async function searchNaver(query, sort, display) {
+  const result = await sendPersonalization(MESSAGE_TYPES.SEARCH_NAVER_NEWS, { query, sort, display });
+  return result?.items || [];
+}
+
+// Manual interest keywords first, then ones learned from reading, then chosen topics as a fallback.
+function interestTerms(profile, articleKeywords) {
+  const topicLabels = (profile?.topics || []).map(
+    (code) => INTEREST_TOPICS.find((topic) => topic.code === code)?.label || code
+  );
+  const terms = [...(profile?.interests || []).map((interest) => interest.term), ...topicLabels];
+  return [...new Set(terms)].filter((term) => term && !articleKeywords.includes(term));
+}
+
+function renderNaverGroup(group) {
+  const items = group.items.length
+    ? group.items.map(renderNaverItem).join("")
+    : '<li class="state-message">검색 결과가 없습니다.</li>';
+  return `<section class="naver-group"><h3>${escapeHtml(group.title)}</h3>
+    <p>검색어: ${escapeHtml(group.query)}</p><ul class="article-list">${items}</ul></section>`;
+}
+
+function renderNaverItem(item) {
+  const date = formatReadAt(item.publishedAt);
+  // Opens inside 네이버 뉴스 when NAVER hosts the article; the original source stays linked (특약 2.2).
+  const href = isNaverUrl(item.naverUrl) ? item.naverUrl : item.url;
+  const original = href !== item.url
+    ? `<a href="${safeHref(item.url)}" target="_blank" rel="noreferrer">원문</a>`
+    : "";
+  return `<li><a href="${safeHref(href)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)}</a>
+    <p>${escapeHtml(item.description)}</p>
+    <div class="rec-meta"><span>출처 ${escapeHtml(item.source)}</span>${date ? `<span>${escapeHtml(date)}</span>` : ""}${original}</div></li>`;
 }
 
 async function sendPersonalization(type, payload = {}) {

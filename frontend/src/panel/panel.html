@@ -165,12 +165,22 @@
           <div id="keyword-chart" class="chart"></div>
         </section>
 
-        <section class="block">
+        <section id="recommendations-block" class="block">
           <header class="block-head">
             <h2>추천 기사</h2>
             <button id="show-recommendations-popup" class="chip-button" type="button">팝업 띄우기</button>
           </header>
           <ul id="recommendations" class="article-list"></ul>
+        </section>
+
+        <section id="naver-block" class="block" aria-labelledby="naver-search-title" hidden>
+          <header class="block-head">
+            <h2 id="naver-search-title">네이버 뉴스 검색</h2>
+            <button id="naver-search" class="chip-button" type="button" disabled>다시 검색</button>
+          </header>
+          <p id="naver-search-caption" class="caption">기사를 분석하면 핵심 키워드로 네이버 뉴스를 검색합니다.</p>
+          <div id="naver-results" class="naver-results"></div>
+          <p class="naver-credit">검색 결과 제공: NAVER. 네이버가 보여 준 순서와 내용 그대로이며, 저장하거나 AI 분석에 쓰지 않습니다.</p>
         </section>
       </section>
 
@@ -321,6 +331,14 @@
               </form>
             </details>
           </div>
+        </section>
+
+        <section class="block" aria-labelledby="collect-title">
+          <header class="block-head">
+            <h2 id="collect-title">수집 도우미</h2>
+          </header>
+          <p class="caption">본문이 없는 빅카인즈 기사를 하나씩 직접 열어 분석하거나, 네이버 뉴스를 볼 때 자동 분석을 켭니다.</p>
+          <a class="chip-button" href="../collect/collect.html" target="_blank" rel="noopener">수집 도우미 열기</a>
         </section>
 
         <section class="block" aria-labelledby="site-permissions-title">

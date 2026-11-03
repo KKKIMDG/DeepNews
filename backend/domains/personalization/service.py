@@ -140,6 +140,7 @@ def recommend(
             score=item.score,
             reasons=item.reasons,
             adProbability=item.candidate.ad_probability,
+            publisher=item.candidate.publisher,
         )
         for item in ranked
     ]

@@ -148,6 +148,7 @@ def load_candidates(
             News.article_data["publishedAt"].astext,
             NewsAnalysis.ad_probability,
             TOP_CATEGORY,
+            News.article_data["extraData"]["publisher"].astext,
         )
         .outerjoin(NewsAnalysis, NewsAnalysis.news_id == News.id)
         .where(News.id.in_(news_ids))
@@ -161,8 +162,9 @@ def load_candidates(
             ad_probability=_ad_probability(ad_probability),
             keywords=keyword_map.get(int(news_id), {}),
             category=category or "",
+            publisher=publisher or "",
         )
-        for news_id, title, url, created_at, published_at, ad_probability, category in rows
+        for news_id, title, url, created_at, published_at, ad_probability, category, publisher in rows
     ]
 
 

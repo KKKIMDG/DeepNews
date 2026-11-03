@@ -1,0 +1,102 @@
+.collect {
+  max-width: 760px;
+  margin: 0 auto;
+  padding-top: 24px;
+}
+
+.collect-head {
+  margin-bottom: 16px;
+}
+
+.collect-head h1 {
+  font-size: 22px;
+}
+
+.collect .block {
+  margin-bottom: 16px;
+}
+
+.collect-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  align-items: flex-end;
+  margin: 12px 0;
+}
+
+.collect-controls .field {
+  min-width: 220px;
+}
+
+.collect-controls select {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.check {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.collect-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.collect-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 9px 0;
+  border-top: 1px solid var(--line);
+}
+
+.collect-list li:first-child {
+  border-top: 0;
+}
+
+.collect-list .meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.collect-list .title {
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.collect-list .state {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.collect-list .state[data-status="done"] {
+  color: var(--safe);
+}
+
+.collect-list .state[data-status="error"] {
+  color: var(--danger);
+  white-space: normal;
+}
+
+.collect-list .state[data-status="opening"],
+.collect-list .state[data-status="loading"] {
+  color: var(--caution);
+}
+
+.collect-list li[data-status="done"] .title {
+  color: var(--muted);
+}
+
+#load-more {
+  margin-top: 8px;
+}

@@ -632,6 +632,11 @@ body[data-auth="signed-in"] .auth-view {
   font-weight: 700;
 }
 
+a.chip-button {
+  display: inline-block;
+  text-decoration: none;
+}
+
 .chip-button:hover:not(:disabled),
 .pill-action:hover:not(:disabled) {
   border-color: var(--focus);
@@ -1001,6 +1006,35 @@ body[data-auth="signed-in"] .auth-view {
   grid-template-columns: 1fr auto;
   gap: 8px;
   align-items: start;
+}
+
+.publisher-group h3,
+.naver-group h3 {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.publisher-group .article-list li {
+  padding: 6px 0;
+}
+
+.naver-group + .naver-group {
+  margin-top: 14px;
+}
+
+.naver-results p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.naver-credit {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .rec-meta {
