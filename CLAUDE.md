@@ -100,7 +100,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
    - 이미 분석 결과가 있는 기사(`is_reusable`: 분석 있음, `content_partial` 아님, `ad_probability ≥ 0`)는 브라우저 본문이 달라도 덮어쓰지 않고 `cached=True`로 반환한다. 응답의 `sharedFromOther`가 참이면 패널이 신고 버튼을 보여 준다. 서로 다른 사용자 신고가 `REANALYSIS_REPORTS`(3)건 쌓이면 `news_analysis`를 지우고 다음 제출 때 다시 분석한다(`news_report` 테이블, `003_news_report.sql`).
    - 빅카인즈 후보(`content_partial`)를 교체할 때는 제출 본문이 저장된 앞 200자와 맞는지(`matches_lead`, 글자 2-gram 포함률 ≥ 0.6) 확인하고, 맞지 않으면 409. 남의 후보 기사를 가짜 본문으로 선점하지 못하게 하려는 것이다.
    - 처리 순서: 세션 1에서 조회·스냅샷 → **세션 없이** 정제와 모델 추론(느린 추론이 DB 커넥션을 잡지 않게) → 세션 2에서 다시 조회(동시 요청이 먼저 끝났으면 그 결과 반환) → `news`·키워드·`news_analysis`를 `INSERT … ON CONFLICT`로 저장. `extraData`에는 `content_origin=browser`, `submitted_by`(사용자 id)를 기록하고 기존 메타데이터(빅카인즈 분류, 발행일)는 유지한다.
-   - `analysis/service.py::analyze_article`은 모델이 없거나 GPU 대기열(동시 2건, 120초)이 차면 `AnalysisUnavailable`을 던지고 라우터가 503으로 바꾼다. placeholder 결과는 저장하지 않는다. 광고 임계값은 `AD_HIGH_THRESHOLD`(0.8)·`AD_REVIEW_THRESHOLD`(0.4) 한 곳에서 관리한다.
+   - `analysis/service.py::analyze_article`은 모델이 없거나 GPU 대기열(동시 2건, 120초. 한 건 약 0.5초이며, 2026-11-03 측정에서 동시 4건 이상은 처리량이 1/3로 떨어졌다)이 차면 `AnalysisUnavailable`을 던지고 라우터가 503으로 바꾼다. placeholder 결과는 저장하지 않는다. 광고 임계값은 `AD_HIGH_THRESHOLD`(0.8)·`AD_REVIEW_THRESHOLD`(0.4) 한 곳에서 관리한다.
    - 마지막에 `personalize_response`가 읽은 기록을 남기고 `personalization.service.recommend`로 추천 기사를 만든다. 500 응답에는 내부 오류 내용을 넣지 않고 서버 로그(`logging`)에만 남긴다.
 
 ### 인증 / 개인화
@@ -151,7 +151,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
 - GPU 서버에는 포트를 열지 않는다. 로컬 PC의 SSH 터널(`127.0.0.1:8000`) 위에 Cloudflare 임시 터널(`cloudflared tunnel --url http://127.0.0.1:8000`)을 띄워 `https://*.trycloudflare.com` 주소를 받는다. 이 주소는 터널을 다시 띄울 때마다 바뀐다.
 ### 수집 도우미 (`frontend/src/collect/`, `domains/collect`)
 - 패널 설정 탭의 "수집 도우미 열기"로 여는 확장 프로그램 페이지. `GET /api/v1/collect/candidates`(로그인 필요)가 본문이 없는 빅카인즈 후보(`content_partial`)를 언론사별 개수와 함께 발행일 역순으로 준다.
-- 사용자가 "열기"나 "다음 기사 열기"를 **누를 때마다 기사 하나**를 백그라운드 탭으로 연다(`COLLECT_OPEN`). service worker가 그 탭의 로드 완료 때 `analyzeTab`을 한 번 돌리고, 성공하면 탭을 닫는다(옵션). 실패하면 사용자가 볼 수 있도록 탭을 남긴다. 동시 진행은 `COLLECT_LIMIT`(3)건이다. 요청·결과는 `storage.session`의 `deepnews.collectTabs`·`deepnews.collectResults`에 두고 `withCollectStorage`로 직렬화한다.
+- 사용자가 "열기"나 "다음 기사 열기"를 **누를 때마다 기사 하나**를 백그라운드 탭으로 연다(`COLLECT_OPEN`). service worker가 그 탭의 로드 완료 때 `analyzeTab`을 한 번 돌리고, 성공하면 탭을 닫는다(옵션). 실패하면 사용자가 볼 수 있도록 탭을 남긴다. 동시 진행은 `COLLECT_LIMIT`(6)건이다. 병목은 추론이 아니라 페이지 로딩이므로 서버 동시 추론 수(2)와 따로 정한다. 요청·결과는 `storage.session`의 `deepnews.collectTabs`·`deepnews.collectResults`에 두고 `withCollectStorage`로 직렬화한다.
 - 언론사 리디렉트에 대비해 후보 탭은 후보 URL로 제출한다(`analyzeTab(tabId, submitUrl)`). 서버의 앞 200자 일치 검사가 그대로 적용된다.
 - "네이버 기사 열면 자동 분석"(`deepnews.naverAutoCollect`)을 켜면, 사용자가 직접 연 네이버 기사(`isNaverArticleUrl`)를 로드될 때 분석한다. 네이버 권한(`NAVER_NEWS_ORIGINS`)은 켤 때 받는다.
 - **자동으로 여러 기사를 연달아 여는 기능(일괄 열기, 타이머, 다음 기사 자동 진행)은 넣지 않는다.** 그러면 사람이 연 페이지가 아니라 크롤링이 된다. 네이버 검색 API 결과를 수집 목록으로 쓰지 않는다(특약 2.3).

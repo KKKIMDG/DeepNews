@@ -14,6 +14,7 @@ AD_REVIEW_THRESHOLD = 0.4
 # The models only read the first 512 / 1024 tokens; tokenizing a 100k-character body is wasted CPU.
 MAX_INPUT_CHARS = 6000
 # The shared MIG slice runs at most this many inferences at once; the rest wait, then get 503.
+# Measured on the MIG (2026-11-03): 2-3 concurrent give ~180 articles/min; 4+ drops to ~70/min.
 _INFERENCE_SLOTS = threading.BoundedSemaphore(2)
 INFERENCE_WAIT_SECONDS = 120
 

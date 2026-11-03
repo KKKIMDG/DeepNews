@@ -22,7 +22,8 @@ export const COLLECT_TABS_KEY = "deepnews.collectTabs";
 export const COLLECT_RESULTS_KEY = "deepnews.collectResults";
 // storage.local: analyze every 네이버 뉴스 article the user opens.
 export const NAVER_AUTO_COLLECT_KEY = "deepnews.naverAutoCollect";
-export const COLLECT_LIMIT = 3;
+// Page loading, not inference (~0.5 s each), limits collection; the server queue absorbs 6 tabs.
+export const COLLECT_LIMIT = 6;
 export const NAVER_NEWS_ORIGINS = [
   "https://n.news.naver.com/*",
   "https://m.news.naver.com/*",
