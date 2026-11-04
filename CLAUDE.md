@@ -133,6 +133,8 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
   - `batch/bigkinds.py`가 행을 파싱한다. `분석제외 여부`가 표시된 행과 URL이 없는 행은 건너뛰고, `뉴스 식별자`는 반드시 `dtype=str`로 읽는다.
   - `storage.import_bigkinds_articles`는 **새 URL만 추가**한다(`on conflict do nothing`). 확장 프로그램으로 저장된 전체 본문을 덮어쓰지 않기 위해서다.
   - URL은 `canonical_article_url`로 정규화해 저장한다(네이버 링크 행이 확장 프로그램 URL과 맞도록).
+  - import 끝에 `storage.mark_collect_skips`가 수집 도우미에서 뺄 후보에 `extraData.collect_skip`을 붙인다(행은 지우지 않으며, 키를 지우면 되돌아간다). `duplicate`는 같은 언론사·같은 제목(기호만 무시하고 괄호 안 글자와 ①② 같은 원문자는 비교)에서 전체 본문이 있는 행, 그다음 최신 행 하나를 빼고 붙이며 `duplicate_of`에 남긴 행 id를 적는다. `no_body`는 [속보]·[1보]·[2보]이거나 앞부분이 60자 미만인 후보다. 분석된 행은 건드리지 않는다.
+  - 빅카인즈는 한 번에 최대 2만 건이라 기간을 길게 잡으면 가장 최근 며칠치만 내려온다(2026-11 기준 두 파일이 각각 10/26–10/30, 11/01–11/03). 기간을 짧게 나눠 받아야 한다.
   - 가져온 행에는 `extraData.content_partial=true`가 붙는다. `fetch_unanalyzed_news`(배치 분석)는 이 행을 건너뛴다.
   - 사용자가 확장 프로그램으로 그 기사를 분석하면 `analyze_or_get`이 앞 200자 일치를 확인한 뒤 전체 본문으로 교체하고 분석한다. 이때 빅카인즈 분류(`category`, `publisher` 등)와 발행일은 유지된다.
   - KBS 등 일부 언론사는 headless(자동화) 브라우저에 기사 대신 "페이지를 찾을 수 없습니다"를 보여 준다. 일반 Chrome에서는 정상적으로 열린다. 자동화 테스트·시연에는 YTN·뉴스핌처럼 robots.txt가 기사 경로를 허용하고 headless에서도 열리는 사이트를 쓴다.

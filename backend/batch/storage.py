@@ -71,7 +71,60 @@ def import_bigkinds_articles(
                     template="(%s, %s, %s)",
                 )
             refresh_keyword_stats(cursor, {keyword_id for _, keyword_id, _ in mapping_values})
+            mark_collect_skips(cursor)
     return len(new_articles)
+
+
+# Candidates the 수집 도우미 should not offer. Rows are only flagged (extraData.collect_skip), never
+# deleted, so removing the key undoes it. Rows with full text or an analysis are left alone.
+_SKIPPABLE = """
+    coalesce((n.article_data->'extraData'->>'content_partial')::boolean, false)
+    and not (coalesce(n.article_data->'extraData', '{}'::jsonb) ? 'collect_skip')
+    and not exists (select 1 from news_analysis na where na.news_id = n.id)
+"""
+
+
+def mark_collect_skips(cursor) -> dict[str, int]:
+    # Same publisher, same title (programme closings, notice boards, photo series): keep one, preferring
+    # a row that already has full text, then the newest. Only punctuation is ignored: "①…"/"②…" parts
+    # and "(10/26)"-dated issues are different articles.
+    cursor.execute(
+        f"""
+        with titled as (
+            select id, coalesce(article_data->'extraData'->>'publisher', '') as publisher,
+                   regexp_replace(title, '[^0-9A-Za-z가-힣①-⑳]', '', 'g') as title_key,
+                   coalesce((article_data->'extraData'->>'content_partial')::boolean, false) as partial,
+                   article_data->>'publishedAt' as published_at
+            from news
+        ), ranked as (
+            select id, first_value(id) over w as keep_id, row_number() over w as position
+            from titled
+            where length(title_key) >= 8
+            window w as (partition by publisher, title_key
+                         order by partial, published_at desc nulls last, id desc)
+        )
+        update news n
+        set article_data = jsonb_set(
+            n.article_data, '{{extraData}}',
+            coalesce(n.article_data->'extraData', '{{}}'::jsonb)
+                || jsonb_build_object('collect_skip', 'duplicate', 'duplicate_of', r.keep_id))
+        from ranked r
+        where r.id = n.id and r.position > 1 and {_SKIPPABLE}
+        """
+    )
+    duplicates = cursor.rowcount
+    # Breaking-news flashes and leads under 60 characters are usually title-only pages (422 on analysis).
+    cursor.execute(
+        f"""
+        update news n
+        set article_data = jsonb_set(
+            n.article_data, '{{extraData}}',
+            coalesce(n.article_data->'extraData', '{{}}'::jsonb) || '{{"collect_skip": "no_body"}}'::jsonb)
+        where {_SKIPPABLE}
+          and (n.title ~ '^\\s*\\[(속보|1보|2보)\\]' or length(coalesce(n.article_data->>'content', '')) < 60)
+        """
+    )
+    return {"duplicate": duplicates, "no_body": cursor.rowcount}
 
 
 def fetch_unanalyzed_news(database_url: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
