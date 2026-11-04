@@ -20,6 +20,9 @@ const naverAutoNode = document.getElementById("naver-auto");
 const openNaverNode = document.getElementById("open-naver");
 const naverMessageNode = document.getElementById("naver-message");
 const recentNode = document.getElementById("recent");
+const sitePermissionsNode = document.getElementById("site-permissions");
+const sitePermissionsSummaryNode = document.getElementById("site-permissions-summary");
+const grantSitesNode = document.getElementById("grant-sites");
 
 const STATUS_LABELS = { opening: "여는 중", loading: "분석 중", done: "저장됨", error: "실패" };
 
@@ -27,6 +30,9 @@ let candidates = [];
 let collectedByMe = 0;
 let results = {};
 let loading = null;
+let sites = [];
+let missingOrigins = [];
+let sitesChecked = 0;
 
 async function send(type, payload = {}) {
   const response = await chrome.runtime.sendMessage({ type, payload });
@@ -63,6 +69,8 @@ function loadCandidates() {
         offset: 0
       });
       renderPublishers(data.publishers);
+      sites = data.sites || [];
+      void renderSitePermissions();
       candidates = data.items.filter((item) => !results[String(item.newsId)]).slice(0, PAGE_SIZE);
       collectedByMe = data.collectedByMe;
       renderCandidates();
@@ -90,6 +98,39 @@ function renderPublishers(publishers) {
   }
   publisherNode.replaceChildren(...options);
   publisherNode.value = selected;
+}
+
+// http sites usually redirect to https, so ask for both.
+function sitePatterns(origin) {
+  const patterns = [`${origin}/*`];
+  if (origin.startsWith("http://")) patterns.push(`https://${origin.slice("http://".length)}/*`);
+  return patterns;
+}
+
+// Worked out ahead of the click: awaiting other calls first would lose the user gesture the prompt needs.
+async function renderSitePermissions() {
+  const check = ++sitesChecked;
+  const scope = publisherNode.value;
+  const scoped = sites.filter((site) => !scope || site.publisher === scope);
+  const granted = await Promise.all(
+    scoped.map((site) => chrome.permissions.contains({ origins: sitePatterns(site.origin) }).catch(() => false))
+  );
+  if (check !== sitesChecked) return;
+  const missing = scoped.filter((_, index) => !granted[index]);
+  missingOrigins = [...new Set(missing.flatMap((site) => sitePatterns(site.origin)))];
+  sitePermissionsNode.hidden = !missing.length;
+  if (!missing.length) return;
+  const publishers = [...new Set(missing.map((site) => site.publisher || "언론사 미상"))];
+  const shown = publishers.slice(0, 6).join(", ");
+  const rest = publishers.length > 6 ? ` 외 ${publishers.length - 6}곳` : "";
+  sitePermissionsSummaryNode.textContent = `본문 읽기 권한이 없는 언론사 ${publishers.length}곳: ${shown}${rest}`;
+}
+
+async function grantSites() {
+  messageNode.textContent = "";
+  const granted = await chrome.permissions.request({ origins: missingOrigins }).catch(() => false);
+  if (!granted) messageNode.textContent = "권한을 허용하지 않았습니다. 기사를 열 때 사이트마다 다시 묻습니다.";
+  await renderSitePermissions();
 }
 
 function renderStatus() {
@@ -170,14 +211,14 @@ function stateItem(message) {
 // Called straight from a click: the permission prompt only works inside the user's gesture.
 async function openCandidate(item) {
   messageNode.textContent = "";
-  let origin;
+  let origins;
   try {
-    origin = `${new URL(item.url).origin}/*`;
+    origins = sitePatterns(new URL(item.url).origin);
   } catch {
     messageNode.textContent = "기사 주소가 올바르지 않습니다.";
     return;
   }
-  const granted = await chrome.permissions.request({ origins: [origin] }).catch(() => false);
+  const granted = await chrome.permissions.request({ origins }).catch(() => false);
   if (!granted) {
     messageNode.textContent = `${new URL(item.url).hostname}의 본문 읽기 권한이 필요합니다.`;
     return;
@@ -216,8 +257,12 @@ function renderRecent() {
 
 publisherNode.addEventListener("change", () => {
   candidates = [];
+  void renderSitePermissions();
   void loadCandidates();
 });
+grantSitesNode.addEventListener("click", () => void grantSites());
+chrome.permissions.onAdded.addListener(() => void renderSitePermissions());
+chrome.permissions.onRemoved.addListener(() => void renderSitePermissions());
 openNextNode.addEventListener("click", () => {
   const item = nextCandidate();
   if (item) void openCandidate(item);

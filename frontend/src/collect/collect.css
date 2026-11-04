@@ -37,6 +37,27 @@
   color: var(--text);
 }
 
+.site-permissions {
+  display: flex;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+
+.site-permissions[hidden] {
+  display: none;
+}
+
+.site-permissions p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .check {
   display: inline-flex;
   gap: 6px;

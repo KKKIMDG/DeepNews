@@ -18,11 +18,20 @@ def list_candidates(
     """BigKinds articles still waiting for their full text; a person opens each one to analyze it."""
     with get_session() as session:
         rows = repository.candidates(session, publisher.strip(), limit, offset)
+        sites = repository.candidate_sites(session)
         return {
-            "publishers": [{"publisher": name, "count": count} for name, count in repository.publisher_counts(session)],
+            "publishers": publisher_totals(sites),
+            "sites": [{"publisher": name, "origin": origin, "count": count} for name, origin, count in sites if origin],
             "items": [
                 {"newsId": news_id, "url": url, "title": title, "publisher": name, "publishedAt": published_at or ""}
                 for news_id, url, title, name, published_at in rows
             ],
             "collectedByMe": repository.collected_by(session, user.id),
         }
+
+
+def publisher_totals(sites: list[tuple[str, str, int]]) -> list[dict]:
+    totals: dict[str, int] = {}
+    for name, _, count in sites:
+        totals[name] = totals.get(name, 0) + count
+    return [{"publisher": name, "count": count} for name, count in sorted(totals.items(), key=lambda kv: (-kv[1], kv[0]))]

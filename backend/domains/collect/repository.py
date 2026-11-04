@@ -8,18 +8,20 @@ from ..news.models import News
 EXTRA = News.article_data["extraData"]
 PUBLISHER = func.coalesce(EXTRA["publisher"].astext, "")
 PUBLISHED_AT = News.article_data["publishedAt"].astext
+ORIGIN = func.coalesce(func.substring(News.url, r"^https?://[^/]+"), "")
 # BigKinds rows still holding only the 200-character lead; analyzing one in the browser clears the flag.
 IS_PARTIAL = func.coalesce(EXTRA["content_partial"].astext.cast(Boolean), False)
 # Repeats and title-only flashes flagged at import (batch.storage.mark_collect_skips).
 IS_CANDIDATE = and_(IS_PARTIAL, not_(func.coalesce(EXTRA, text("'{}'::jsonb")).has_key("collect_skip")))
 
 
-def publisher_counts(session: Session) -> list[tuple[str, int]]:
+# One row per (publisher, site): the collector asks for every site's permission in one prompt.
+def candidate_sites(session: Session) -> list[tuple[str, str, int]]:
     count = func.count()
     rows = session.execute(
-        select(PUBLISHER, count).where(IS_CANDIDATE).group_by(PUBLISHER).order_by(count.desc(), PUBLISHER)
+        select(PUBLISHER, ORIGIN, count).where(IS_CANDIDATE).group_by(PUBLISHER, ORIGIN).order_by(count.desc())
     ).all()
-    return [(publisher, int(total)) for publisher, total in rows]
+    return [(publisher, origin, int(total)) for publisher, origin, total in rows]
 
 
 def candidates(session: Session, publisher: str, limit: int, offset: int) -> list[tuple]:

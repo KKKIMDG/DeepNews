@@ -8,6 +8,12 @@ class PublisherCount(BaseModel):
     count: int
 
 
+class CandidateSite(BaseModel):
+    publisher: str
+    origin: str
+    count: int
+
+
 class CandidateItem(BaseModel):
     newsId: int
     url: str
@@ -18,6 +24,7 @@ class CandidateItem(BaseModel):
 
 class CandidatesResponse(BaseModel):
     publishers: list[PublisherCount]
+    sites: list[CandidateSite] = []
     items: list[CandidateItem]
     # Articles this account has analyzed from the browser, cached ones included.
     collectedByMe: int
