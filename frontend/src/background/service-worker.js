@@ -164,7 +164,10 @@ async function collectIfRequested(tabId, tab) {
 
   const key = request?.key || url;
   collectStarted.set(tabId, url);
-  await withCollectStorage(({ results }) => putCollectResult(results, key, { status: "loading", url, title: tab.title || "" }));
+  // Keep the candidate URL (not a redirect target) so the collector page can open it again.
+  await withCollectStorage(({ results }) =>
+    putCollectResult(results, key, { status: "loading", url: request?.url || url, title: tab.title || "" })
+  );
   try {
     const analysis = await analyzeTab(tabId, request?.url || "");
     await withCollectStorage(({ tabs, results }) => {
@@ -176,14 +179,14 @@ async function collectIfRequested(tabId, tab) {
         error: ""
       });
     });
-    if (request?.closeAfter) await chrome.tabs.remove(tabId).catch(() => {});
   } catch (error) {
-    // The tab stays open so the user can see what the page showed.
+    // The failure stays in the collector's list, which can open the article again.
     await withCollectStorage(({ tabs, results }) => {
       delete tabs[tabId];
       putCollectResult(results, key, { status: "error", error: error?.message || "분석에 실패했습니다." });
     });
   }
+  if (request?.closeAfter) await chrome.tabs.remove(tabId).catch(() => {});
 }
 
 async function shouldAutoCollectNaver(url) {

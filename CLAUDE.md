@@ -151,7 +151,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
 - GPU 서버에는 포트를 열지 않는다. 로컬 PC의 SSH 터널(`127.0.0.1:8000`) 위에 Cloudflare 임시 터널(`cloudflared tunnel --url http://127.0.0.1:8000`)을 띄워 `https://*.trycloudflare.com` 주소를 받는다. 이 주소는 터널을 다시 띄울 때마다 바뀐다.
 ### 수집 도우미 (`frontend/src/collect/`, `domains/collect`)
 - 패널 설정 탭의 "수집 도우미 열기"로 여는 확장 프로그램 페이지. `GET /api/v1/collect/candidates`(로그인 필요)가 본문이 없는 빅카인즈 후보(`content_partial`)를 언론사별 개수와 함께 발행일 역순으로 준다.
-- 사용자가 "열기"나 "다음 기사 열기"를 **누를 때마다 기사 하나**를 백그라운드 탭으로 연다(`COLLECT_OPEN`). service worker가 그 탭의 로드 완료 때 `analyzeTab`을 한 번 돌리고, 성공하면 탭을 닫는다(옵션). 실패하면 사용자가 볼 수 있도록 탭을 남긴다. 동시 진행은 `COLLECT_LIMIT`(6)건이다. 병목은 추론이 아니라 페이지 로딩이므로 서버 동시 추론 수(2)와 따로 정한다. 요청·결과는 `storage.session`의 `deepnews.collectTabs`·`deepnews.collectResults`에 두고 `withCollectStorage`로 직렬화한다.
+- 사용자가 "열기"나 "다음 기사 열기"를 **누를 때마다 기사 하나**를 백그라운드 탭으로 연다(`COLLECT_OPEN`). service worker가 그 탭의 로드 완료 때 `analyzeTab`을 한 번 돌리고, "분석이 끝나면 탭 닫기"를 켜 두면 성공·실패와 관계없이 탭을 닫고, 실패한 기사는 "최근 처리"의 "다시 열기"로 다시 연다. 목록은 페이지 넘김 없이 늘 미분석 후보의 첫 50건이며, 목록의 기사를 모두 열면 그 기사들을 빼고 자동으로 다시 불러온다(탭을 여는 것은 여전히 클릭). 동시 진행은 `COLLECT_LIMIT`(6)건이다. 병목은 추론이 아니라 페이지 로딩이므로 서버 동시 추론 수(2)와 따로 정한다. 요청·결과는 `storage.session`의 `deepnews.collectTabs`·`deepnews.collectResults`에 두고 `withCollectStorage`로 직렬화한다.
 - 언론사 리디렉트에 대비해 후보 탭은 후보 URL로 제출한다(`analyzeTab(tabId, submitUrl)`). 서버의 앞 200자 일치 검사가 그대로 적용된다.
 - "네이버 기사 열면 자동 분석"(`deepnews.naverAutoCollect`)을 켜면, 사용자가 직접 연 네이버 기사(`isNaverArticleUrl`)를 로드될 때 분석한다. 네이버 권한(`NAVER_NEWS_ORIGINS`)은 켤 때 받는다.
 - **자동으로 여러 기사를 연달아 여는 기능(일괄 열기, 타이머, 다음 기사 자동 진행)은 넣지 않는다.** 그러면 사람이 연 페이지가 아니라 크롤링이 된다. 네이버 검색 API 결과를 수집 목록으로 쓰지 않는다(특약 2.3).

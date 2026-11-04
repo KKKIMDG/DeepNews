@@ -96,7 +96,3 @@
 .collect-list li[data-status="done"] .title {
   color: var(--muted);
 }
-
-#load-more {
-  margin-top: 8px;
-}

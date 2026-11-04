@@ -16,7 +16,6 @@ const closeAfterNode = document.getElementById("close-after");
 const openNextNode = document.getElementById("open-next");
 const messageNode = document.getElementById("collect-message");
 const candidatesNode = document.getElementById("candidates");
-const loadMoreNode = document.getElementById("load-more");
 const naverAutoNode = document.getElementById("naver-auto");
 const openNaverNode = document.getElementById("open-naver");
 const naverMessageNode = document.getElementById("naver-message");
@@ -25,9 +24,9 @@ const recentNode = document.getElementById("recent");
 const STATUS_LABELS = { opening: "여는 중", loading: "분석 중", done: "저장됨", error: "실패" };
 
 let candidates = [];
-let offset = 0;
 let collectedByMe = 0;
 let results = {};
+let loading = null;
 
 async function send(type, payload = {}) {
   const response = await chrome.runtime.sendMessage({ type, payload });
@@ -48,31 +47,38 @@ async function initialize() {
     openNextNode.disabled = true;
     return;
   }
-  await loadCandidates({ reset: true });
+  await loadCandidates();
 }
 
-async function loadCandidates({ reset = false } = {}) {
-  if (reset) {
-    offset = 0;
-    candidates = [];
-  }
-  messageNode.textContent = "";
-  try {
-    const data = await send(MESSAGE_TYPES.GET_COLLECT_CANDIDATES, {
-      publisher: publisherNode.value || "",
-      limit: PAGE_SIZE,
-      offset
-    });
-    if (reset) renderPublishers(data.publishers);
-    candidates = candidates.concat(data.items);
-    offset += data.items.length;
-    collectedByMe = data.collectedByMe;
-    loadMoreNode.hidden = data.items.length < PAGE_SIZE;
-    renderCandidates();
-    renderStatus();
-  } catch (error) {
-    messageNode.textContent = error.message;
-  }
+// The list is always the first page of what is still unanalyzed. Articles this page already
+// opened (in progress or failed) are still candidates on the server, so ask for that many extra.
+function loadCandidates() {
+  if (loading) return loading;
+  loading = (async () => {
+    messageNode.textContent = "";
+    try {
+      const data = await send(MESSAGE_TYPES.GET_COLLECT_CANDIDATES, {
+        publisher: publisherNode.value || "",
+        limit: Math.min(200, PAGE_SIZE + Object.keys(results).length),
+        offset: 0
+      });
+      renderPublishers(data.publishers);
+      candidates = data.items.filter((item) => !results[String(item.newsId)]).slice(0, PAGE_SIZE);
+      collectedByMe = data.collectedByMe;
+      renderCandidates();
+      renderStatus();
+    } catch (error) {
+      messageNode.textContent = error.message;
+    } finally {
+      loading = null;
+    }
+  })();
+  return loading;
+}
+
+// Once every listed article has been opened, fetch the next ones instead of a "더 보기" button.
+function refillIfUsedUp() {
+  if (candidates.length && !nextCandidate()) void loadCandidates();
 }
 
 function renderPublishers(publishers) {
@@ -192,7 +198,7 @@ function renderRecent() {
     return;
   }
   recentNode.replaceChildren(
-    ...entries.map(([, result]) => {
+    ...entries.map(([key, result]) => {
       const li = document.createElement("li");
       li.dataset.status = result.status;
       const text = document.createElement("div");
@@ -201,14 +207,17 @@ function renderRecent() {
       title.textContent = result.title || result.url;
       text.append(title);
       if (result.status === "error") text.append(errorLine(result.error));
-      li.append(text, stateLabel(result));
+      const retry = /^\d+$/.test(key) && result.status === "error" && result.url;
+      li.append(text, retry ? openButton({ newsId: Number(key), url: result.url }, result) : stateLabel(result));
       return li;
     })
   );
 }
 
-publisherNode.addEventListener("change", () => void loadCandidates({ reset: true }));
-loadMoreNode.addEventListener("click", () => void loadCandidates());
+publisherNode.addEventListener("change", () => {
+  candidates = [];
+  void loadCandidates();
+});
 openNextNode.addEventListener("click", () => {
   const item = nextCandidate();
   if (item) void openCandidate(item);
@@ -243,6 +252,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
   renderCandidates();
   renderRecent();
   renderStatus();
+  refillIfUsedUp();
 });
 
 void initialize();

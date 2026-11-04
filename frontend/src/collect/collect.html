@@ -21,7 +21,8 @@
         </header>
         <p class="caption">
           기사를 직접 열면 확장 프로그램이 본문을 읽어 분석하고 저장합니다. 한 번 누를 때 기사 하나가 열리고,
-          동시에 6건까지 분석합니다. 사이트를 처음 열 때는 본문 읽기 권한을 묻습니다.
+          동시에 6건까지 분석합니다. 사이트를 처음 열 때는 본문 읽기 권한을 묻습니다. 목록의 기사를 다 열면 다음
+          기사를 자동으로 불러오고, 실패한 기사는 "최근 처리"에서 다시 열 수 있습니다.
         </p>
         <div class="collect-controls">
           <label class="field">
@@ -30,13 +31,12 @@
           </label>
           <label class="check">
             <input id="close-after" type="checkbox" checked />
-            <span>저장되면 탭 닫기</span>
+            <span>분석이 끝나면 탭 닫기 (실패해도)</span>
           </label>
           <button id="open-next" class="primary-button" type="button">다음 기사 열기</button>
         </div>
         <p id="collect-message" class="auth-message" role="status"></p>
         <ul id="candidates" class="collect-list"></ul>
-        <button id="load-more" class="chip-button" type="button" hidden>더 보기</button>
       </section>
 
       <section class="block" aria-labelledby="naver-collect-title">
