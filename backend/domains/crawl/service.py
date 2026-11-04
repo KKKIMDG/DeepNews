@@ -22,7 +22,10 @@ def prepare_browser_article(url: str, title: str, text: str, published_at: str =
     """Process supplied plain text without fetching the caller's URL."""
     content = clean_article_text(text)
     if len(content) < 80:
-        raise HTTPException(status_code=422, detail="정제 후 기사 본문이 너무 짧습니다.")
+        raise HTTPException(
+            status_code=422,
+            detail="기사 본문을 찾지 못했습니다. 제목만 있는 기사(속보 등)이거나 본문이 너무 짧습니다.",
+        )
     analyzer, _ = get_konlpy_analyzer()
     counts = limit_token_counts(extract_token_counts(content, analyzer))
     return CrawlResponse(title=title.strip(), url=url, content=content,

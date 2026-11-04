@@ -82,17 +82,16 @@ def _refresh_keyword_stats(session: Session, keyword_ids: set[int]) -> None:
 
 def save_keyword_mappings(session: Session, news_id: int, token_counts: dict[str, int]) -> None:
     limited = limit_token_counts(token_counts)
-    if not limited:
-        session.execute(delete(ArticleKeyword).where(ArticleKeyword.news_id == news_id))
-        session.flush()
-        return
-
     existing_mappings = session.scalars(
         select(ArticleKeyword).where(ArticleKeyword.news_id == news_id)
     ).all()
     affected_keyword_ids = {mapping.keyword_id for mapping in existing_mappings}
 
     session.execute(delete(ArticleKeyword).where(ArticleKeyword.news_id == news_id))
+    if not limited:
+        session.flush()
+        _refresh_keyword_stats(session, affected_keyword_ids)
+        return
 
     words = sorted(limited.keys())
     session.execute(

@@ -116,7 +116,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
 - 저장된 키워드에는 Regex 분석기가 남긴 잡음(`안경을`, `있다`)이 섞여 있다. 개인화 계층은 `ranking.normalize_term`으로 이를 정리해서 쓰며(조사 제거, 서술어·일반어 제외), 원본 `keyword` 테이블은 그대로 둔다.
 
 ### 백엔드 구조 (`backend/`)
-- 라우트: `POST /api/v1/news/analyze`, `POST /api/v1/news/{id}/report`, `/api/v1/auth/*`, `/api/v1/me/*`, `GET /api/v1/naver/news`, `GET /api/v1/collect/candidates`, `/health`. `crawl`·`analysis` 도메인에는 라우터가 없고 텍스트 정제(`crawl/extractor.py`, 네트워크 코드 없음)와 모델 추론만 남아 있다.
+- 라우트: `POST /api/v1/news/analyze`, `POST /api/v1/news/{id}/report`, `/api/v1/auth/*`, `/api/v1/me/*`, `GET /api/v1/naver/news`, `GET /api/v1/collect/candidates`, `/health`. `crawl`·`analysis` 도메인에는 라우터가 없고 텍스트 정제(`crawl/extractor.py`, 네트워크 코드 없음)와 모델 추론만 남아 있다. 정제는 `strip_publisher_footer`로 신문사 정보(등록번호·발행인 등 3개 이상이 모인 곳)와 끝부분의 저작권·제보 안내(국민일보 "GoodNews paper", YTN "당신의 제보가…")를 자르며, 남은 본문이 80자 미만이면 422다(제목만 있는 [속보] 페이지). `%`·`·`·따옴표·한자는 남긴다.
 - **import 시 부작용 주의**: `backend.main`을 import하면 `ensure_schema()`가 `backend/sql/*.sql` 중 `schema_migration` 테이블에 기록되지 않은 파일만 이름 순서대로 실행한다(advisory lock으로 직렬화). 기존 DB에서는 처음 한 번 전부 다시 실행되므로 각 파일은 계속 여러 번 실행해도 안전해야 한다(`if not exists`). 또 `domains/analysis/service.py` import 시 모델을 즉시 로드한다. 모델/torch가 없으면 `AD_MODEL_READY`/`SUMMARY_MODEL_READY=False`가 되고 분석 요청은 503이다. `/health`는 모델 상태와 DB 연결(`select 1`)을 보여 주며 서버 경로는 노출하지 않는다. `backend/__init__.py`는 `app`을 lazy하게 노출해 배치 도구 import가 API를 띄우지 않게 한다.
 - DB 접근 경로가 두 가지다: API는 SQLAlchemy(`database.py`, `domains/news/models.py`, `repository.py`), 배치는 psycopg2 직접 사용(`batch/storage.py`). 스키마 변경 시 양쪽을 모두 맞춰야 한다.
 - 테이블:

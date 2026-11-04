@@ -15,8 +15,40 @@ def normalize_text(text: str) -> str:
     return text.strip()
 
 
+# Publisher footers the extractor sometimes picks up. A masthead is recognised by several
+# registration fields close together; on a title-only page (e.g. a [속보]) it is all that is left.
+MASTHEAD_FIELD = re.compile(
+    r"인터넷신문\s?등록번호|사업자\s?등록번호|등록일자|발행일자|발행인|편집인|청소년\s?보호\s?책임자|All Rights Reserved",
+    re.IGNORECASE,
+)
+MASTHEAD_SPAN = 400
+# Copyright, collection and reader-tip lines; only cut when they sit near the end of the body.
+TRAILING_NOTICE = re.compile(
+    r"GoodNews paper|당신의 제보가 뉴스가 됩니다|Copyright\s?(?:[ⓒ©]|\(c\)|\d{4}|.{0,60}?All Rights Reserved)"
+    r"|저작권자\s?[ⓒ©(]|무단\s?전재\s?(?:및|,|·)|AI\s?학습\s?(?:및\s?활용\s?|이용\s?)*금지",
+    re.IGNORECASE,
+)
+TRAILING_WINDOW = 400
+
+
+def strip_publisher_footer(text: str) -> str:
+    fields = list(MASTHEAD_FIELD.finditer(text))
+    for index, first in enumerate(fields):
+        nearby = {
+            re.sub(r"\s", "", match.group(0)).lower()
+            for match in fields[index:]
+            if match.start() - first.start() <= MASTHEAD_SPAN
+        }
+        if len(nearby) >= 3:
+            title = text.rfind("제호", max(0, first.start() - 150), first.start())
+            text = text[: title if title >= 0 else first.start()]
+            break
+    notice = TRAILING_NOTICE.search(text, max(0, len(text) - TRAILING_WINDOW))
+    return text[: notice.start()] if notice else text
+
+
 def clean_article_text(text: str) -> str:
-    cleaned = normalize_text(text)
+    cleaned = strip_publisher_footer(normalize_text(text))
     patterns = [
         (r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", " "),
         (r"\b[가-힣]{2,5}\s?(기자|특파원|인턴기자|객원기자|논설위원|위원|앵커)\b", " "),
@@ -26,10 +58,11 @@ def clean_article_text(text: str) -> str:
         ),
         (r"(무단전재|재배포\s*금지|저작권자\s*[^.]{0,50})", " "),
         (r"\[[^\]]+\]", " "),
-        (r"\([^)]+\)", " "),
+        (r"\([^)]+\)", ""),  # "에쓰오일(S-OIL)은" -> "에쓰오일은", not "에쓰오일 은"
         (r"<[^>]+>", " "),
         (r"[▶△▲▷◇◆■□★☆☎☞◎※●○=]+", " "),
-        (r"[^0-9A-Za-z가-힣\s.,!?]", " "),
+        # Keep what changes meaning or readability: 11.8%, 5·18, quotes, ranges, 李·與 and similar.
+        (r"[^0-9A-Za-z가-힣一-鿿\s.,!?%·'\"‘’“”~\-/:…]", " "),
         (r"\s{2,}", " "),
     ]
 
