@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/v1/news", tags=["news"])
 def analyze_article_api(req: AnalyzeArticleRequest, user: CurrentUser = Depends(get_current_user)):
     # Login is required because the result becomes shared data; the submitter is recorded with it.
     try:
-        return analyze_or_get(req.url, req.title, req.content, user, req.publishedAt)
+        return analyze_or_get(req.url, req.title, req.content, user, req.publishedAt, req.deferRecommendations)
     except HTTPException:
         raise
     except AnalysisUnavailable as exception:

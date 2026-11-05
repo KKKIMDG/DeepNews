@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
 from datetime import datetime, timezone
@@ -8,6 +9,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from ...database import get_session
 from ..auth.dependencies import CurrentUser
 from ..auth.models import AppUser
 from . import repository
@@ -33,19 +35,48 @@ SEEN_STORY_LIMIT = 50
 TOPIC_CANDIDATES_PER_TOPIC = 40
 INITIAL_KEYWORD_LIMIT = 10
 # Topic terms come from the whole corpus and shift only with large imports, so one query per process and TTL.
+# The query takes ~2 s: it runs at startup (warm_up) and, once stale, in the background while requests
+# keep using the previous terms.
 TOPIC_TERMS_TTL_SECONDS = 6 * 60 * 60
 _topic_terms_lock = threading.Lock()
 _topic_terms_cache: tuple[float, dict[str, dict[str, float]]] = (0.0, {})
+_topic_terms_refreshing = False
+logger = logging.getLogger(__name__)
+
+
+def _load_topic_terms(session: Session) -> dict[str, dict[str, float]]:
+    global _topic_terms_cache
+    terms = topic_terms(*repository.topic_keyword_stats(session))
+    _topic_terms_cache = (time.monotonic(), terms)
+    return terms
+
+
+def _refresh_topic_terms() -> None:
+    global _topic_terms_refreshing
+    try:
+        with get_session() as session:
+            _load_topic_terms(session)
+    except Exception:
+        logger.exception("분야 대표어 갱신 실패")
+    finally:
+        _topic_terms_refreshing = False
 
 
 def _topic_terms(session: Session) -> dict[str, dict[str, float]]:
-    global _topic_terms_cache
+    global _topic_terms_refreshing
     with _topic_terms_lock:
         loaded_at, cached = _topic_terms_cache
-        if not cached or time.monotonic() - loaded_at > TOPIC_TERMS_TTL_SECONDS:
-            cached = topic_terms(*repository.topic_keyword_stats(session))
-            _topic_terms_cache = (time.monotonic(), cached)
+        if not cached:
+            return _load_topic_terms(session)
+        if time.monotonic() - loaded_at > TOPIC_TERMS_TTL_SECONDS and not _topic_terms_refreshing:
+            _topic_terms_refreshing = True
+            threading.Thread(target=_refresh_topic_terms, name="topic-terms-refresh", daemon=True).start()
         return cached
+
+
+def warm_up() -> None:
+    with get_session() as session:
+        _topic_terms(session)
 
 
 def _topic_profile(session: Session, chosen: set[str]) -> dict[str, float]:

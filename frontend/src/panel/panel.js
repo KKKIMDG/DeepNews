@@ -1173,7 +1173,7 @@ function renderRecommendations(analysis) {
     setPopupButtonLabel(showRecommendationsPopupNode, latestOpenOverlays.recommendations, "추천 기사");
   }
 
-  if (status === ANALYSIS_STATUS.LOADING) {
+  if (status === ANALYSIS_STATUS.LOADING || analysis.recommendationsPending) {
     recommendationsNode.innerHTML = '<li class="state-message">관련 기사를 찾고 있습니다.</li>';
     return;
   }
@@ -1239,7 +1239,7 @@ function renderNaverSearch(analysis) {
   const onNaver = isNaverUrl(articleUrl);
   // The NAVER search section and its notice appear only while a 네이버 뉴스 article is open.
   naverBlockNode.hidden = !onNaver;
-  recommendationsBlockNode.hidden = onNaver && !analysis.recommendations.length;
+  recommendationsBlockNode.hidden = onNaver && !analysis.recommendations.length && !analysis.recommendationsPending;
   const ready = onNaver && analysis.status === ANALYSIS_STATUS.READY && articleTerms(analysis).length > 0;
   naverSearchNode.disabled = !ready;
   if (articleUrl === naverResultsUrl) return;

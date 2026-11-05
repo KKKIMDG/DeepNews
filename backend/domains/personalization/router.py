@@ -80,10 +80,12 @@ def delete_history(news_id: int, user: CurrentUser = Depends(get_current_user)):
 @router.get("/recommendations", response_model=list[RecommendationPayload])
 def get_recommendations(
     limit: int = Query(default=10, ge=1, le=30),
+    newsId: int | None = Query(default=None, ge=1),
     user: CurrentUser = Depends(get_current_user),
 ):
+    # With newsId: articles related to the one just analyzed (fetched after the analysis is shown).
     with get_session() as session:
-        return service.recommend(session, user, current_news_id=None, limit=limit)
+        return service.recommend(session, user, current_news_id=newsId, limit=limit)
 
 
 @router.get("/export")

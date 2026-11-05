@@ -123,6 +123,7 @@ def serialize_analysis_response(
     user: CurrentUser | None = None,
     report_count: int = 0,
     reported_by_me: bool = False,
+    recommendations_deferred: bool = False,
 ) -> AnalyzeArticleApiResponse:
     article_data = news.article_data or {}
     extra = article_data.get("extraData") or {}
@@ -134,6 +135,7 @@ def serialize_analysis_response(
         keywords=extract_keywords_from_article_data(article_data),
         summary=analysis.summary or "",
         recommendations=recommendations,
+        recommendationsDeferred=recommendations_deferred,
         adLikelihood=AdLikelihoodPayload(label=ad_label_for(score), score=score),
         contentOrigin=str(extra.get("content_origin") or ""),
         sharedFromOther=cached and (user is None or extra.get("submitted_by") != user.id),
@@ -143,19 +145,22 @@ def serialize_analysis_response(
 
 
 def personalize_response(
-    session, news: News, analysis: NewsAnalysis, cached: bool, user: CurrentUser | None
+    session, news: News, analysis: NewsAnalysis, cached: bool, user: CurrentUser | None, defer: bool = False
 ) -> AnalyzeArticleApiResponse:
     # A savepoint keeps a personalization failure from rolling back the (expensive) analysis itself.
+    recommendations = []
     try:
         with session.begin_nested():
             if user is not None:
                 personalization.record_read(session, user, news.id)
-            recommendations = personalization.recommend(session, user, current_news_id=news.id)
+            if not defer:
+                recommendations = personalization.recommend(session, user, current_news_id=news.id)
     except Exception:
         logger.exception("개인화 처리 실패 (news_id=%s)", news.id)
-        recommendations = []
     report_count, reported_by_me = repository.report_counts(session, news.id, user.id if user else None)
-    return serialize_analysis_response(news, analysis, cached, recommendations, user, report_count, reported_by_me)
+    return serialize_analysis_response(
+        news, analysis, cached, recommendations, user, report_count, reported_by_me, recommendations_deferred=defer
+    )
 
 
 def analyze_or_get(
@@ -164,6 +169,7 @@ def analyze_or_get(
     content: str,
     user: CurrentUser,
     published_at: str = "",
+    defer_recommendations: bool = False,
 ) -> AnalyzeArticleApiResponse:
     """Serve the shared analysis of an article, or analyze the text the user's browser extracted.
 
@@ -174,7 +180,7 @@ def analyze_or_get(
     with get_session() as session:
         existing = repository.fetch_news_by_canonical_url(session, url)
         if is_reusable(existing):
-            return personalize_response(session, existing, existing.analysis, True, user)
+            return personalize_response(session, existing, existing.analysis, True, user, defer_recommendations)
         # Snapshot: ORM objects expire once this session commits.
         target_url = existing.url if existing else url  # a legacy-URL row is updated in place, not duplicated
         stored_title = existing.title if existing else ""
@@ -195,7 +201,7 @@ def analyze_or_get(
     with get_session() as session:
         current = repository.fetch_news_by_url(session, target_url)
         if is_reusable(current):  # another request finished the same article meanwhile
-            return personalize_response(session, current, current.analysis, True, user)
+            return personalize_response(session, current, current.analysis, True, user, defer_recommendations)
         article_data = build_article_data(article, stored_data, user, lead_verified=stored_partial)
         news = repository.upsert_news(session, stored_title or article.title, target_url, article_data)
         repository.save_keyword_mappings(session, news.id, article.token_counts)
@@ -208,7 +214,7 @@ def analyze_or_get(
             named_entities=result["named_entities"],
         )
         repository.clear_reports(session, news.id)
-        return personalize_response(session, news, analysis, False, user)
+        return personalize_response(session, news, analysis, False, user, defer_recommendations)
 
 
 def report_news(news_id: int, user: CurrentUser, reason: str) -> ReportResponse:

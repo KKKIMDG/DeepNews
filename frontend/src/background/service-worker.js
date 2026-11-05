@@ -5,6 +5,7 @@ import {
   deleteHistory,
   deleteKeywordPreference,
   exportMyData,
+  fetchArticleRecommendations,
   fetchCollectCandidates,
   fetchHistory,
   fetchProfile,
@@ -169,7 +170,7 @@ async function collectIfRequested(tabId, tab) {
     putCollectResult(results, key, { status: "loading", url: request?.url || url, title: tab.title || "" })
   );
   try {
-    const analysis = await analyzeTab(tabId, request?.url || "");
+    const analysis = await analyzeTab(tabId, request?.url || "", { recommendations: !request });
     await withCollectStorage(({ tabs, results }) => {
       delete tabs[tabId];
       putCollectResult(results, key, {
@@ -369,7 +370,8 @@ async function handleTabUrlChange(tabId, url) {
 
 // submitUrl: the collector's candidate URL, so a publisher redirect still fills that BigKinds row
 // (the server accepts it only if the body matches the stored lead).
-async function analyzeTab(requestedTabId, submitUrl = "") {
+// Collector tabs pass recommendations: false; nobody reads related articles there.
+async function analyzeTab(requestedTabId, submitUrl = "", { recommendations = true } = {}) {
   const auth = await getAuthState();
   if (!auth.token) throw new Error("로그인 후 분석해 주세요.");
 
@@ -410,7 +412,8 @@ async function analyzeTab(requestedTabId, submitUrl = "") {
         url: submitUrl || article.url,
         title: article.title,
         content: article.content,
-        publishedAt: article.publishedAt || ""
+        publishedAt: article.publishedAt || "",
+        deferRecommendations: true
       },
       auth.token
     );
@@ -419,13 +422,18 @@ async function analyzeTab(requestedTabId, submitUrl = "") {
       throw new Error("분석하는 동안 페이지가 바뀌어 결과를 표시하지 않았습니다.");
     }
 
-    const analysis = buildAnalysis(backendResult, articleInfo);
+    const analysis = {
+      ...buildAnalysis(backendResult, articleInfo),
+      runId,
+      recommendationsPending: recommendations && Boolean(backendResult?.recommendationsDeferred && backendResult?.newsId)
+    };
     await setTabAnalysis(tabId, analysis);
     await sendTabMessageWithContentScript(tabId, {
       type: "HIGHLIGHT_KEYWORDS",
       payload: { keywords: buildHighlightPayload(analysis.keywords) }
     });
     await restoreOpenOverlays(tabId, analysis);
+    if (analysis.recommendationsPending) void loadDeferredRecommendations(tabId, runId, analysis);
     return analysis;
   } catch (error) {
     if (error instanceof AuthExpiredError) {
@@ -466,19 +474,40 @@ async function isCurrentRun(tabId, runId) {
   return (await chrome.storage.session.get(key))[key]?.runId === runId;
 }
 
+// On 네이버 뉴스 the reader stays inside NAVER: only NAVER-hosted articles are recommended there.
+function recommendationsFor(articleUrl, items) {
+  const list = Array.isArray(items) ? items : [];
+  return isNaverUrl(articleUrl) ? list.filter((item) => isNaverUrl(item?.url)) : list;
+}
+
+async function loadDeferredRecommendations(tabId, runId, analysis) {
+  let recommendations = [];
+  try {
+    const result = await withAuth((token) => fetchArticleRecommendations(token, { newsId: analysis.newsId }));
+    recommendations = recommendationsFor(analysis.article?.url, result);
+  } catch {
+    // The block then reads "아직 추천 기사가 없습니다"; the analysis itself is already shown.
+  }
+  if (!(await isCurrentRun(tabId, runId))) return;
+  const current = await getTabAnalysis(tabId);
+  await setTabAnalysis(tabId, { ...current, recommendations, recommendationsPending: false });
+  if ((await getTabOverlays(tabId)).recommendations && recommendations.length) {
+    await sendTabMessageWithContentScript(tabId, {
+      type: MESSAGE_TYPES.SHOW_RECOMMENDATIONS,
+      payload: { recommendations }
+    });
+  }
+}
+
 function buildAnalysis(result, articleInfo) {
   const score = Number(result?.adLikelihood?.score);
-  const recommendations = Array.isArray(result?.recommendations) ? result.recommendations : [];
   return {
     ...DEFAULT_ANALYSIS,
     status: ANALYSIS_STATUS.READY,
     article: articleInfo,
     keywords: normalizeKeywords(result?.keywords),
     summary: typeof result?.summary === "string" ? result.summary : "",
-    // On 네이버 뉴스 the reader stays inside NAVER: only NAVER-hosted articles are recommended there.
-    recommendations: isNaverUrl(articleInfo?.url)
-      ? recommendations.filter((item) => isNaverUrl(item?.url))
-      : recommendations,
+    recommendations: recommendationsFor(articleInfo?.url, result?.recommendations),
     adLikelihood: {
       label: String(result?.adLikelihood?.label || ""),
       score: Number.isFinite(score) ? score : -1

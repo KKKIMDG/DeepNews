@@ -12,6 +12,8 @@ class AnalyzeArticleRequest(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     content: str = Field(min_length=100, max_length=100000)
     publishedAt: str = Field(default="", max_length=64)
+    # The panel shows the analysis first and fetches recommendations separately (/me/recommendations?newsId=).
+    deferRecommendations: bool = False
 
     @field_validator("url")
     @classmethod
@@ -50,6 +52,7 @@ class AnalyzeArticleApiResponse(BaseModel):
     keywords: list[KeywordPayload]
     summary: str
     recommendations: list[RecommendationPayload]
+    recommendationsDeferred: bool = False
     adLikelihood: AdLikelihoodPayload
     contentOrigin: str = ""
     # A cached result built from text someone else submitted (or imported); the panel offers a report button.

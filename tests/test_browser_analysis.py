@@ -48,7 +48,7 @@ class BrowserAnalysisTests(unittest.TestCase):
                 sys.modules.pop(name, None)
         sys.modules.update({k: v for k, v in cls.saved.items() if k.startswith('backend')})
 
-    def run_analyze(self, found=None, refetched=None, content='본문 '*100, url='https://example.com/article'):
+    def run_analyze(self, found=None, refetched=None, content='본문 '*100, url='https://example.com/article', defer=False):
         """Run analyze_or_get with repository lookups returning `found` (first session) and `refetched` (second)."""
         s = self.service
         article = types.SimpleNamespace(url=url, title='제목', content=content, published_at='2026-10-30T09:12:00',
@@ -64,7 +64,7 @@ class BrowserAnalysisTests(unittest.TestCase):
         repo.fetch_news_by_url.return_value = refetched
         repo.report_counts.return_value = (0, False)
         try:
-            result = s.analyze_or_get(url, '제목', content, USER)
+            result = s.analyze_or_get(url, '제목', content, USER, defer_recommendations=defer)
         except HTTPException as error:
             result = error
         return result, prepare, repo, analyze, serialize
@@ -92,6 +92,22 @@ class BrowserAnalysisTests(unittest.TestCase):
         repo.upsert_news_analysis.assert_called_once()
         repo.clear_reports.assert_called_once()
         self.service.personalization.record_read.assert_called()
+
+    def test_deferred_recommendations_skip_ranking_but_record_the_read(self):
+        personalization = self.service.personalization
+        personalization.reset_mock()
+        _, _, _, _, serialize = self.run_analyze(defer=True)
+        personalization.record_read.assert_called_once()
+        personalization.recommend.assert_not_called()
+        self.assertEqual(serialize.call_args.args[3], [])
+        self.assertTrue(serialize.call_args.kwargs['recommendations_deferred'])
+
+    def test_recommendations_inline_by_default(self):
+        personalization = self.service.personalization
+        personalization.reset_mock()
+        _, _, _, _, serialize = self.run_analyze()
+        personalization.recommend.assert_called_once()
+        self.assertFalse(serialize.call_args.kwargs['recommendations_deferred'])
 
     def test_full_text_replaces_bigkinds_lead_keeping_metadata(self):
         lead_row = stored('https://www.newspim.com/news/view/1', content=LEAD, published='2026-10-30',

@@ -142,6 +142,15 @@ def models_ready() -> bool:
     return AD_MODEL_READY and SUMMARY_MODEL_READY
 
 
+WARM_UP_TEXT = "정부는 오늘 내년도 예산안을 발표했다. 경제 회복과 일자리 창출에 중점을 두었다고 밝혔다."
+
+
+def warm_up() -> None:
+    # The first CUDA call pays ~2 s of kernel setup; spend it at startup instead of on a user's request.
+    if models_ready():
+        analyze_article("", "", WARM_UP_TEXT)
+
+
 def analyze_article(url: str, title: str, text: str) -> dict[str, Any]:
     # Placeholder output (ad_prob=-1, truncated text) must never be stored as a shared result.
     if not models_ready():

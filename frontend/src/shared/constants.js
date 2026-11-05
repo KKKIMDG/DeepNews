@@ -99,6 +99,8 @@ export const DEFAULT_ANALYSIS = {
   keywords: [],
   summary: "",
   recommendations: [],
+  // The analysis is shown first; related articles arrive in a second request.
+  recommendationsPending: false,
   adLikelihood: {
     label: "미분석",
     score: -1
@@ -120,6 +122,12 @@ export const DEFAULT_AUTH = {
 };
 
 export function expireStaleLoading(analysis, now = Date.now()) {
+  if (analysis?.recommendationsPending) {
+    const updatedAt = Date.parse(analysis.updatedAt || "");
+    if (!Number.isFinite(updatedAt) || now - updatedAt > STALE_LOADING_MS) {
+      return { ...analysis, recommendationsPending: false };
+    }
+  }
   if (analysis?.status !== ANALYSIS_STATUS.LOADING) return analysis;
   const startedAt = Date.parse(analysis.startedAt || "");
   if (Number.isFinite(startedAt) && now - startedAt <= STALE_LOADING_MS) return analysis;

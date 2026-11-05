@@ -155,6 +155,10 @@ export async function fetchCollectCandidates(token, { publisher = "", limit = 50
   return apiRequest(`/collect/candidates?${params}`, { token });
 }
 
+export async function fetchArticleRecommendations(token, { newsId, limit = 5 }) {
+  return apiRequest(`/me/recommendations?limit=${limit}&newsId=${encodeURIComponent(newsId)}`, { token });
+}
+
 export async function fetchRecommendations(token, { limit = 10 } = {}) {
   return apiRequest(`/me/recommendations?limit=${limit}`, { token });
 }

@@ -18,6 +18,12 @@ def limit_token_counts(token_counts: dict[str, int]) -> dict[str, int]:
     )
 
 
+def warm_up() -> None:
+    # Okt starts a JVM and loads its dictionaries on first use (~3 s).
+    analyzer, _ = get_konlpy_analyzer()
+    analyzer.nouns("정부는 오늘 내년도 예산안을 발표했다.")
+
+
 def prepare_browser_article(url: str, title: str, text: str, published_at: str = "") -> CrawlResponse:
     """Process supplied plain text without fetching the caller's URL."""
     content = clean_article_text(text)

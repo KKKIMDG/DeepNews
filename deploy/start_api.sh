@@ -36,8 +36,10 @@ tmux new-session -d -s "$SESSION" \
 
 echo "API 시작 대기 (최대 ${WAIT_SECONDS}초): $HEALTH_URL"
 deadline=$((SECONDS + WAIT_SECONDS))
+body=""
 while (( SECONDS < deadline )); do
-  if body=$(curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null); then
+  # Wait for the warm-up too (형태소 분석기, 모델, 분야 대표어), so the first user request is not slow.
+  if body=$(curl -fsS --max-time 5 "$HEALTH_URL" 2>/dev/null) && [[ "$body" == *'"warmed_up":true'* ]]; then
     echo "정상 기동: $body"
     exit 0
   fi
@@ -49,6 +51,10 @@ while (( SECONDS < deadline )); do
   sleep 2
 done
 
+if [[ -n "$body" ]]; then
+  echo "기동했지만 ${WAIT_SECONDS}초 안에 예열이 끝나지 않았습니다: $body" >&2
+  exit 0
+fi
 echo "${WAIT_SECONDS}초 안에 /health가 응답하지 않았습니다. 로그 마지막 부분:" >&2
 tail -n 40 "$LOG_FILE" >&2
 exit 1
