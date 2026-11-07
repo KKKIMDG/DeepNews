@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 from datetime import datetime, timezone
+from functools import lru_cache
 from urllib.parse import parse_qs, urlparse
 
 
@@ -71,18 +72,16 @@ def clean_article_text(text: str) -> str:
     return cleaned.strip()
 
 
-def get_konlpy_analyzer():
+@lru_cache(maxsize=1)
+def get_analyzer():
+    """Kiwi (no JVM; keeps 소비자물가·상승률·김영익 whole, where Okt split them into 상+승률 or misread 보이다 as a noun).
+    A plain regex where kiwipiepy is not installed."""
     try:
-        from konlpy.tag import Mecab
+        from kiwipiepy import Kiwi
 
-        return Mecab(), "Mecab"
+        return KiwiAnalyzer(Kiwi()), "Kiwi"
     except Exception:
-        try:
-            from konlpy.tag import Okt
-
-            return Okt(), "Okt"
-        except Exception:
-            return RegexAnalyzer(), "Regex"
+        return RegexAnalyzer(), "Regex"
 
 
 def extract_token_counts(text: str, analyzer) -> dict[str, int]:
@@ -90,6 +89,39 @@ def extract_token_counts(text: str, analyzer) -> dict[str, int]:
     filtered = [noun.strip() for noun in nouns if len(noun.strip()) >= 2]
     counts = Counter(filtered)
     return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+class KiwiAnalyzer:
+    # NNG/NNP nouns and SL Latin letters (AI반도체) chain; XSN noun suffixes (률·류·화) attach to the noun before them,
+    # except the plural 들 (전문가들) and the adjectival 적 (본격적), which would make a new word of every noun.
+    CHAIN_TAGS = frozenset({"NNG", "NNP", "SL"})
+    LOOSE_SUFFIXES = frozenset({"들", "적"})
+    NOUN_TAGS = frozenset({"NNG", "NNP"})
+
+    def __init__(self, kiwi):
+        self.kiwi = kiwi
+
+    def nouns(self, text: str) -> list[str]:
+        """Noun phrases: nouns written without a space between them form one term (소비자+물가 → 소비자물가).
+
+        Numbers break a phrase, so every term appears verbatim in the text and can be highlighted there.
+        """
+        terms: list[str] = []
+        run: list = []
+        end = -1
+        for token in self.kiwi.tokenize(text or ""):
+            if run and token.start == end and (token.tag in self.CHAIN_TAGS or (token.tag == "XSN" and token.form not in self.LOOSE_SUFFIXES)):
+                run.append(token)
+            else:
+                self._flush(run, terms)
+                run = [token] if token.tag in self.CHAIN_TAGS else []
+            end = token.start + token.len
+        self._flush(run, terms)
+        return terms
+
+    def _flush(self, run: list, terms: list[str]) -> None:
+        if any(token.tag in self.NOUN_TAGS for token in run):
+            terms.append("".join(token.form for token in run))
 
 
 def normalize_published_at(value: str | None) -> str:

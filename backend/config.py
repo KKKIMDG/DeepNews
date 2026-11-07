@@ -26,20 +26,15 @@ class Settings:
     # NAVER search API keys for the live 네이버 뉴스 검색 section; results are never stored.
     naver_client_id: str = ""
     naver_client_secret: str = ""
+    # Words that never name an article's subject. Common but meaningful words (정부, 기업) are left to the IDF
+    # weighting in crawl.service.select_keywords instead.
     keyword_stopwords: frozenset[str] = frozenset({
-        "이번",
-        "관련",
-        "통해",
-        "대한",
-        "위한",
-        "지난",
-        "이날",
-        "정도",
-        "이후",
-        "현재",
-        "기준",
-        "가장",
-        "매우",
+        "이번", "관련", "통해", "대한", "위한", "지난", "이날", "정도", "이후", "현재", "기준", "가장", "매우",
+        "기자", "뉴스", "앵커", "제보", "무단", "전재", "재배포", "배포", "금지", "저작권",
+        "오늘", "어제", "내일", "올해", "작년", "지난해", "내년", "당시", "최근", "전날", "이달", "지난달",
+        "경우", "때문", "가운데", "가능", "필요", "상황", "부분", "내용", "사실", "결과", "이상", "이하", "수준",
+        "모습", "사람", "의견", "입장", "설명", "시작", "진행", "예정", "확인", "거론", "아래", "위해",
+        "이유", "자신", "영향", "제외", "자사", "본인", "내외",
     })
 
 

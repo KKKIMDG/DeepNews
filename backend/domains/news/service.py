@@ -15,7 +15,7 @@ from ..personalization import service as personalization
 from ..personalization.schemas import RecommendationPayload
 from ..crawl.schemas import CrawlResponse
 from ..crawl.extractor import canonical_article_url
-from ..crawl.service import prepare_browser_article
+from ..crawl.service import prepare_browser_article, select_keywords
 from .models import News, NewsAnalysis
 from . import repository
 from .schemas import (
@@ -70,7 +70,7 @@ def is_reusable(news: News | None) -> bool:
 
 
 def build_article_data(
-    article: CrawlResponse, stored_data: dict[str, Any], user: CurrentUser, lead_verified: bool
+    article: CrawlResponse, keywords: dict[str, int], stored_data: dict[str, Any], user: CurrentUser, lead_verified: bool
 ) -> dict[str, Any]:
     # Keep what earlier sources knew (BigKinds category/publisher, publish date); replace only text-derived parts.
     extra = {
@@ -79,8 +79,8 @@ def build_article_data(
         if key not in REPLACED_EXTRA_KEYS
     }
     extra.update(
-        token_counts=article.token_counts,
-        keywords=[{"term": term, "count": count} for term, count in article.token_counts.items()],
+        token_counts=keywords,
+        keywords=[{"term": term, "count": count} for term, count in keywords.items()],
         content_origin="browser",
         submitted_by=user.id,
     )
@@ -202,9 +202,13 @@ def analyze_or_get(
         current = repository.fetch_news_by_url(session, target_url)
         if is_reusable(current):  # another request finished the same article meanwhile
             return personalize_response(session, current, current.analysis, True, user, defer_recommendations)
-        article_data = build_article_data(article, stored_data, user, lead_verified=stored_partial)
+        # Keywords are picked after inference so terms in the summary can rank higher.
+        doc_freq, total_docs = repository.keyword_document_frequency(session, article.token_counts)
+        keywords = select_keywords(article.token_counts, title=stored_title or article.title, summary=result["summary"],
+                                   content=article.content, doc_freq=doc_freq, total_docs=total_docs)
+        article_data = build_article_data(article, keywords, stored_data, user, lead_verified=stored_partial)
         news = repository.upsert_news(session, stored_title or article.title, target_url, article_data)
-        repository.save_keyword_mappings(session, news.id, article.token_counts)
+        repository.save_keyword_mappings(session, news.id, keywords)
         analysis = repository.upsert_news_analysis(
             session=session,
             news_id=news.id,

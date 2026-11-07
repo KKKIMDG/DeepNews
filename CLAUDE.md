@@ -73,6 +73,7 @@ npm install && npm run test:js           # JS 추출 테스트 (jsdom 26.1.0)
 python -m backend.run_bigkinds_import --file NewsResult_*.xlsx [--dry-run]  # 빅카인즈 엑셀 → 추천 후보 기사
 python -m backend.run_bigkinds_import --inbox airflow/inbox                # 폴더의 엑셀을 모두 import 후 processed/·failed/로 이동
 python -m backend.run_analysis --limit 20                                 # 전체 본문이 있는 미분석 기사 배치 분석 (모델 필요)
+python -m backend.run_keyword_refresh [--apply]                           # 전체 본문 기사의 키워드를 현재 방식으로 다시 선정 (기본 dry run)
 
 docker compose -f airflow/compose.yaml up -d --build                      # 로컬 Airflow (http://localhost:8080)
 ```
@@ -86,7 +87,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
   - 설치·기동·이전 스크립트: `deploy/setup_postgres.sh`(PGDG `.deb`를 `~/deepnews/postgres`에 풀고 `initdb`, 여러 번 실행해도 안전), `deploy/start_db.sh`(`start_api.sh`가 먼저 부른다), `deploy/migrate_from_supabase.sh`(public 스키마 `pg_dump` → 복원 → 행 수 대조). 경로·포트는 `deploy/postgres_env.sh`에 모여 있다.
   - 로컬 PC의 도구(빅카인즈 import 등)는 SSH 터널 `-L 5433:127.0.0.1:5433`으로 같은 DB에 접속한다. 공용 서버이므로 외부 인터페이스에는 열지 않고, 앱 계정은 비밀번호(scram)로만 접속한다.
 - 모델은 git에 포함되지 않으며 `model/`(gitignore) 아래에 둔다: `model/ad_model/`(RobertaForSequenceClassification), `model/kobart_summary_final_v2/`(BartForConditionalGeneration). 경로는 `Settings.ad_model_dir` / `Settings.summary_model_dir`. 모델 config는 transformers 5.x로 저장되었다.
-- 키워드 형태소 분석기는 Mecab → Okt → Regex 순으로 폴백한다(`get_konlpy_analyzer`). Java/Mecab이 없는 환경에서는 Regex를 쓰므로 로컬 결과와 다를 수 있다.
+- 키워드는 Kiwi(`kiwipiepy`, Java 불필요) 명사구에서 고른다(`extractor.get_analyzer`, 없으면 Regex 폴백). 띄어 쓰지 않고 붙은 명사·접미사는 한 단어로 묶는다(소비자물가, 상승률. 복수 '들'과 '적'은 붙이지 않음). 선정은 `crawl.service.select_keywords`: (1+ln 빈도) × IDF(`keyword.article_count`) × 위치 가중치(제목 +0.6, KoBART 요약 +0.4, 앞부분 +0.2)이고, 한 번만 나온 단어는 제목이나 요약에 있어야 하며, 서로 포함 관계인 단어는 하나만 남긴다. 2026-11-07 Okt(빈도 상위 8개)에서 바꿨다. Okt는 '상승률'을 '상+승률'로 자르고 '보이다'를 명사로 읽었다.
 
 ## 아키텍처
 
@@ -102,7 +103,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
    - URL은 먼저 `crawl/extractor.py::canonical_article_url`로 정규화한다. 네이버 기사는 `?sid=`, `/article/`과 `/mnews/article/`, `read.naver?oid=&aid=` 형태를 모두 `https://n.news.naver.com/mnews/article/{oid}/{aid}` 하나로 맞춘다. 다른 사이트 URL은 그대로 둔다. 조회는 `repository.fetch_news_by_canonical_url`이 맡으며, 정규화 이전에 `?sid=`가 붙은 채 저장된 행도 찾는다. 이 접두어 조회는 네이버 호스트에만 적용한다. 다른 사이트는 쿼리가 기사를 구분하는 경우가 많기 때문이다.
    - 이미 분석 결과가 있는 기사(`is_reusable`: 분석 있음, `content_partial` 아님, `ad_probability ≥ 0`)는 브라우저 본문이 달라도 덮어쓰지 않고 `cached=True`로 반환한다. 응답의 `sharedFromOther`가 참이면 패널이 신고 버튼을 보여 준다. 서로 다른 사용자 신고가 `REANALYSIS_REPORTS`(3)건 쌓이면 `news_analysis`를 지우고 다음 제출 때 다시 분석한다(`news_report` 테이블, `003_news_report.sql`).
    - 빅카인즈 후보(`content_partial`)를 교체할 때는 제출 본문이 저장된 앞 200자와 맞는지(`matches_lead`, 글자 2-gram 포함률 ≥ 0.6) 확인하고, 맞지 않으면 409. 남의 후보 기사를 가짜 본문으로 선점하지 못하게 하려는 것이다.
-   - 처리 순서: 세션 1에서 조회·스냅샷 → **세션 없이** 정제와 모델 추론(느린 추론이 DB 커넥션을 잡지 않게) → 세션 2에서 다시 조회(동시 요청이 먼저 끝났으면 그 결과 반환) → `news`·키워드·`news_analysis`를 `INSERT … ON CONFLICT`로 저장. `extraData`에는 `content_origin=browser`, `submitted_by`(사용자 id)를 기록하고 기존 메타데이터(빅카인즈 분류, 발행일)는 유지한다.
+   - 처리 순서: 세션 1에서 조회·스냅샷 → **세션 없이** 정제와 모델 추론(느린 추론이 DB 커넥션을 잡지 않게) → 세션 2에서 다시 조회(동시 요청이 먼저 끝났으면 그 결과 반환) → 키워드 선정(요약이 필요해서 추론 뒤, 문서빈도는 세션 2에서 조회) → `news`·키워드·`news_analysis`를 `INSERT … ON CONFLICT`로 저장. `extraData`에는 `content_origin=browser`, `submitted_by`(사용자 id)를 기록하고 기존 메타데이터(빅카인즈 분류, 발행일)는 유지한다.
    - `analysis/service.py::analyze_article`은 모델이 없거나 GPU 대기열(동시 2건, 120초. 한 건 약 0.5초이며, 2026-11-03 측정에서 동시 4건 이상은 처리량이 1/3로 떨어졌다)이 차면 `AnalysisUnavailable`을 던지고 라우터가 503으로 바꾼다. placeholder 결과는 저장하지 않는다. 광고 임계값은 `AD_HIGH_THRESHOLD`(0.8)·`AD_REVIEW_THRESHOLD`(0.4) 한 곳에서 관리한다.
    - 마지막에 `personalize_response`가 읽은 기록을 남기고 `personalization.service.recommend`로 추천 기사를 만든다. 확장 프로그램은 `deferRecommendations: true`로 보내 추천 계산(약 0.7초)을 응답에서 빼고, 결과를 먼저 그린 뒤 `GET /me/recommendations?newsId=`로 추천을 따로 받는다. 그동안 분석 상태의 `recommendationsPending`이 참이며 패널은 "관련 기사를 찾고 있습니다"를 보여 준다. 수집 도우미 탭은 추천을 부르지 않는다. 500 응답에는 내부 오류 내용을 넣지 않고 서버 로그(`logging`)에만 남긴다.
 
@@ -116,11 +117,11 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
   - 맞춤 피드(현재 기사 없음)에서는 같은 분야를 고를 때마다 0.06씩 깎아 한 분야가 목록을 독차지하지 않게 한다. 현재 기사의 관련 기사 목록은 관련도 순서를 유지한다.
   - 추천에서 빼는 것: 이미 읽은 기사, 제외 키워드가 든 기사, 사용자별 광고 확률 기준값(`app_user.ad_filter_threshold`, 1.0이면 필터 끔) 이상인 기사.
   - 같은 사건을 다룬 다른 언론사 기사(제목 2글자 묶음 Jaccard ≥ 0.25 또는 키워드 코사인 ≥ 0.9)는 추천 목록 안에서 하나만 남긴다. 현재 기사나 최근 읽은 기사와 같은 사건인 기사도 뺀다.
-- 저장된 키워드에는 Regex 분석기가 남긴 잡음(`안경을`, `있다`)이 섞여 있다. 개인화 계층은 `ranking.normalize_term`으로 이를 정리해서 쓰며(조사 제거, 서술어·일반어 제외), 원본 `keyword` 테이블은 그대로 둔다.
+- 빅카인즈 후보의 키워드와 예전 Regex 분석기 키워드에는 잡음(`안경을`, `있다`)이 섞여 있다. 개인화 계층은 `ranking.normalize_term`으로 이를 정리해서 쓰며(조사 제거, 서술어·일반어 제외), 원본 `keyword` 테이블은 그대로 둔다.
 
 ### 백엔드 구조 (`backend/`)
 - 라우트: `POST /api/v1/news/analyze`, `POST /api/v1/news/{id}/report`, `/api/v1/auth/*`, `/api/v1/me/*`, `GET /api/v1/naver/news`, `GET /api/v1/collect/candidates`, `/health`. `crawl`·`analysis` 도메인에는 라우터가 없고 텍스트 정제(`crawl/extractor.py`, 네트워크 코드 없음)와 모델 추론만 남아 있다. 정제는 `strip_publisher_footer`로 신문사 정보(등록번호·발행인 등 3개 이상이 모인 곳)와 끝부분의 저작권·제보 안내(국민일보 "GoodNews paper", YTN "당신의 제보가…")를 자르며, 남은 본문이 80자 미만이면 422다(제목만 있는 [속보] 페이지). `%`·`·`·따옴표·한자는 남긴다.
-- **import 시 부작용 주의**: `backend.main`을 import하면 `ensure_schema()`가 `backend/sql/*.sql` 중 `schema_migration` 테이블에 기록되지 않은 파일만 이름 순서대로 실행한다(advisory lock으로 직렬화). 기존 DB에서는 처음 한 번 전부 다시 실행되므로 각 파일은 계속 여러 번 실행해도 안전해야 한다(`if not exists`). 또 `domains/analysis/service.py` import 시 모델을 즉시 로드한다. 모델/torch가 없으면 `AD_MODEL_READY`/`SUMMARY_MODEL_READY=False`가 되고 분석 요청은 503이다. `/health`는 모델 상태와 DB 연결(`select 1`)을 보여 주며 서버 경로는 노출하지 않는다. 앱 lifespan이 백그라운드 스레드로 첫 사용 비용(Okt JVM 약 3초, CUDA 첫 추론 약 2초, 분야 대표어 약 2초)을 미리 치르며, 끝나면 `/health`의 `warmed_up`이 참이 된다. `deploy/start_api.sh`는 이것까지 기다린다. `backend/__init__.py`는 `app`을 lazy하게 노출해 배치 도구 import가 API를 띄우지 않게 한다.
+- **import 시 부작용 주의**: `backend.main`을 import하면 `ensure_schema()`가 `backend/sql/*.sql` 중 `schema_migration` 테이블에 기록되지 않은 파일만 이름 순서대로 실행한다(advisory lock으로 직렬화). 기존 DB에서는 처음 한 번 전부 다시 실행되므로 각 파일은 계속 여러 번 실행해도 안전해야 한다(`if not exists`). 또 `domains/analysis/service.py` import 시 모델을 즉시 로드한다. 모델/torch가 없으면 `AD_MODEL_READY`/`SUMMARY_MODEL_READY=False`가 되고 분석 요청은 503이다. `/health`는 모델 상태와 DB 연결(`select 1`)을 보여 주며 서버 경로는 노출하지 않는다. 앱 lifespan이 백그라운드 스레드로 첫 사용 비용(Kiwi 모델 약 2초, CUDA 첫 추론 약 2초, 분야 대표어 약 2초)을 미리 치르며, 끝나면 `/health`의 `warmed_up`이 참이 된다. `deploy/start_api.sh`는 이것까지 기다린다. `backend/__init__.py`는 `app`을 lazy하게 노출해 배치 도구 import가 API를 띄우지 않게 한다.
 - DB 접근 경로가 두 가지다: API는 SQLAlchemy(`database.py`, `domains/news/models.py`, `repository.py`), 배치는 psycopg2 직접 사용(`batch/storage.py`). 스키마 변경 시 양쪽을 모두 맞춰야 한다.
 - 테이블:
   - 공용 기사 데이터: `news`(url unique, 본문·키워드는 `article_data` jsonb), `keyword`, `article_keyword`, `news_analysis`(news_id unique)

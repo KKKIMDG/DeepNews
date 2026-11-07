@@ -592,7 +592,8 @@ function renderKeywordChartOverlay(keywords) {
   applyOverlaySize(popup, overlaySize);
 
   const chart = createElement("div", "chart");
-  for (const keyword of keywords.slice(0, 8)) {
+  // Same order as the panel chart: by count, ties in importance order.
+  for (const keyword of [...keywords.slice(0, 8)].sort((a, b) => keywordCount(b) - keywordCount(a))) {
     const count = keywordCount(keyword);
     const row = createElement("div", "bar-row");
     const track = createElement("div", "bar-track");

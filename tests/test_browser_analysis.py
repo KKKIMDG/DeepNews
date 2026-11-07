@@ -63,6 +63,7 @@ class BrowserAnalysisTests(unittest.TestCase):
         repo.fetch_news_by_canonical_url.return_value = found
         repo.fetch_news_by_url.return_value = refetched
         repo.report_counts.return_value = (0, False)
+        repo.keyword_document_frequency.return_value = ({}, 100)
         try:
             result = s.analyze_or_get(url, '제목', content, USER, defer_recommendations=defer)
         except HTTPException as error:
@@ -92,6 +93,27 @@ class BrowserAnalysisTests(unittest.TestCase):
         repo.upsert_news_analysis.assert_called_once()
         repo.clear_reports.assert_called_once()
         self.service.personalization.record_read.assert_called()
+        # Keywords are chosen from the candidates after inference and stored in both places.
+        self.assertEqual(data['extraData']['token_counts'], {'본문': 3})
+        self.assertEqual(repo.save_keyword_mappings.call_args.args[1:], (repo.upsert_news.return_value.id, {'본문': 3}))
+
+    def test_keyword_selection(self):
+        select = sys.modules['backend.domains.crawl.service'].select_keywords
+        content = '반도체 수출이 늘었다. ' + '정부는 반도체 지원을 발표했다. 정부 관계자는 설명했다. ' * 3
+        candidates = {'정부': 6, '반도체': 4, '수출': 1, '관계자': 3, '지원': 3, '발표': 3}
+        doc_freq = {'정부': 900, '관계자': 700, '반도체': 40, '지원': 300, '발표': 800}
+        picked = select(candidates, title='반도체 수출 증가', summary='반도체 수출이 늘었다', content=content,
+                        doc_freq=doc_freq, total_docs=1000)
+        self.assertEqual(list(picked)[:2], ['반도체', '수출'])  # rare + in title/summary beat frequent generic words
+        self.assertEqual(picked['반도체'], 4)  # counts are kept for the frequency chart
+        self.assertLess(list(picked).index('지원'), list(picked).index('정부'))
+        # Used once and in neither title nor summary: dropped.
+        self.assertNotIn('수출', select({'수출': 1}, title='', summary='', content=content, doc_freq={}, total_docs=10))
+        # One of a compound and its piece survives.
+        both = select({'핵추진잠수함': 3, '잠수함': 2}, title='', summary='', content='', doc_freq={}, total_docs=10)
+        self.assertEqual(list(both), ['핵추진잠수함'])
+        many = {f'단어{i}': 2 for i in range(20)}
+        self.assertEqual(len(select(many, title='', summary='', content='', doc_freq={}, total_docs=10)), 8)
 
     def test_deferred_recommendations_skip_ranking_but_record_the_read(self):
         personalization = self.service.personalization

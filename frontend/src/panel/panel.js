@@ -1132,9 +1132,11 @@ function renderChart(analysis) {
     return;
   }
 
-  const counts = keywords.map((keyword) => Math.max(Number(keyword.count) || 0, 0));
+  // Keywords arrive in importance order; the frequency chart reads better sorted by count (ties keep that order).
+  const byCount = [...keywords].sort((a, b) => (Number(b.count) || 0) - (Number(a.count) || 0));
+  const counts = byCount.map((keyword) => Math.max(Number(keyword.count) || 0, 0));
   const max = Math.max(...counts, 1);
-  chartNode.innerHTML = keywords
+  chartNode.innerHTML = byCount
     .map((keyword, index) => {
       const width = Math.round((counts[index] / max) * 100);
       return `

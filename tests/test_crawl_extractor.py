@@ -59,5 +59,45 @@ class ExtractionTests(unittest.TestCase):
         self.assertGreater(len(extractor.clean_article_text(ai_story)), 600)
 
 
+
+try:
+    import kiwipiepy  # noqa: F401
+    HAS_KIWI = True
+except ImportError:
+    HAS_KIWI = False
+
+
+@unittest.skipUnless(HAS_KIWI, 'kiwipiepy not installed')
+class KiwiNounPhraseTests(unittest.TestCase):
+    """Okt split 상승률 into 상+승률 and read 보이다 as the noun 보이; Kiwi with phrase joining keeps terms whole."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.analyzer, cls.name = extractor.get_analyzer()
+
+    def nouns(self, text):
+        return self.analyzer.nouns(text)
+
+    def test_compounds_and_suffixes_stay_whole(self):
+        terms = self.nouns('10월 소비자물가 상승률은 2.8%로 가공식품과 석유류 가격이 올랐다.')
+        self.assertEqual(self.name, 'Kiwi')
+        for term in ['소비자물가', '상승률', '가공식품', '석유류']:
+            self.assertIn(term, terms)
+        self.assertNotIn('승률', terms)
+
+    def test_verbs_and_numbers_are_not_terms(self):
+        terms = self.nouns('코스피가 장중 2%대의 낙폭을 보이며 약세를 보였다.')
+        self.assertIn('코스피', terms)
+        self.assertNotIn('보이', terms)
+        self.assertNotIn('대의', terms)
+
+    def test_spaced_nouns_stay_separate_and_terms_are_verbatim(self):
+        text = '한국은행 금융통화위원회는 기준 금리를 동결했다. 핵추진잠수함 연료 확보 문제도 논의됐다.'
+        terms = self.nouns(text)
+        self.assertIn('핵추진잠수함', terms)
+        self.assertNotIn('기준금리', terms)  # written with a space, so two terms
+        self.assertTrue(all(term in text for term in terms), terms)  # highlightable as written
+
+
 if __name__ == '__main__':
     unittest.main()

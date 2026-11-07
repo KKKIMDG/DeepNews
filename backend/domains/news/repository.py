@@ -56,6 +56,14 @@ def upsert_news(session: Session, title: str, url: str, article_data: dict[str, 
     return session.get(News, news_id, populate_existing=True)
 
 
+def keyword_document_frequency(session: Session, words) -> tuple[dict[str, int], int]:
+    """keyword.article_count for the given words, and the number of articles: the IDF inputs for select_keywords."""
+    words = list(words)
+    rows = session.execute(select(Keyword.word, Keyword.article_count).where(Keyword.word.in_(words))).all() if words else []
+    total = session.scalar(select(func.count()).select_from(News)) or 0
+    return {word: int(count or 0) for word, count in rows}, int(total)
+
+
 def _refresh_keyword_stats(session: Session, keyword_ids: set[int]) -> None:
     if not keyword_ids:
         return
