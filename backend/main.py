@@ -13,6 +13,7 @@ from .domains.collect.router import router as collect_router
 from .domains.personalization.router import router as personalization_router
 from .domains.naver_search.router import router as naver_search_router
 from .domains.news.router import router as news_router
+from .domains.analysis import embedding as keyword_embedding
 from .domains.analysis import service as analysis_service
 from .domains.analysis.service import AD_MODEL_READY, SUMMARY_MODEL_READY
 from .domains.crawl import service as crawl_service
@@ -32,6 +33,7 @@ def warm_up() -> None:
         ("형태소 분석기", crawl_service.warm_up),
         ("분석 모델", analysis_service.warm_up),
         ("분야 대표어", personalization_service.warm_up),
+        ("키워드 문맥 모델", keyword_embedding.warm_up),
     ):
         started = time.perf_counter()
         try:
@@ -69,6 +71,8 @@ def health():
         "status": "ok" if database_ready and AD_MODEL_READY and SUMMARY_MODEL_READY else "degraded",
         "ad_model_ready": AD_MODEL_READY,
         "summary_model_ready": SUMMARY_MODEL_READY,
+        # Known after warm-up; without it keywords are picked by frequency and position only.
+        "keyword_context_ready": keyword_embedding.ready(),
         "database_ready": database_ready,
         "warmed_up": warm_up_done.is_set(),
         "signup_invite_required": bool(settings.signup_invite_code),

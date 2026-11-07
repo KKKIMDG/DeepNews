@@ -9,13 +9,14 @@ from urllib.parse import urlparse
 from fastapi import HTTPException
 
 from ...database import get_session
+from ..analysis.embedding import keyword_context
 from ..analysis.service import AD_HIGH_THRESHOLD, AD_REVIEW_THRESHOLD, analyze_article
 from ..auth.dependencies import CurrentUser
 from ..personalization import service as personalization
 from ..personalization.schemas import RecommendationPayload
 from ..crawl.schemas import CrawlResponse
 from ..crawl.extractor import canonical_article_url
-from ..crawl.service import prepare_browser_article, select_keywords
+from ..crawl.service import keyword_candidates, keyword_document, prepare_browser_article, select_keywords
 from .models import News, NewsAnalysis
 from . import repository
 from .schemas import (
@@ -197,6 +198,12 @@ def analyze_or_get(
     article = prepare_browser_article(target_url, title, content, published_at)
     # Inference runs with no DB session open, so slow requests don't pin pooled connections.
     result = analyze_article(article.url, article.title, article.content)
+    # Keyword context vectors also come from a model, so they too are computed before the session opens.
+    keyword_title = stored_title or article.title
+    context = keyword_context(
+        keyword_document(keyword_title, result["summary"], article.content),
+        keyword_candidates(article.token_counts, title=keyword_title, summary=result["summary"]),
+    )
 
     with get_session() as session:
         current = repository.fetch_news_by_url(session, target_url)
@@ -204,8 +211,8 @@ def analyze_or_get(
             return personalize_response(session, current, current.analysis, True, user, defer_recommendations)
         # Keywords are picked after inference so terms in the summary can rank higher.
         doc_freq, total_docs = repository.keyword_document_frequency(session, article.token_counts)
-        keywords = select_keywords(article.token_counts, title=stored_title or article.title, summary=result["summary"],
-                                   content=article.content, doc_freq=doc_freq, total_docs=total_docs)
+        keywords = select_keywords(article.token_counts, title=keyword_title, summary=result["summary"],
+                                   content=article.content, doc_freq=doc_freq, total_docs=total_docs, context=context)
         article_data = build_article_data(article, keywords, stored_data, user, lead_verified=stored_partial)
         news = repository.upsert_news(session, stored_title or article.title, target_url, article_data)
         repository.save_keyword_mappings(session, news.id, keywords)

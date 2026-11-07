@@ -18,6 +18,8 @@ class Settings:
     database_url: str
     ad_model_dir: Path = PROJECT_ROOT / "model" / "ad_model"
     summary_model_dir: Path = PROJECT_ROOT / "model" / "kobart_summary_final_v2"
+    # Sentence embeddings for keyword context (intfloat/multilingual-e5-small, MIT).
+    keyword_model_dir: Path = PROJECT_ROOT / "model" / "multilingual-e5-small"
     max_len: int = 512
     summary_max_tokens: int = 200
     keyword_limit: int = 8
@@ -34,7 +36,7 @@ class Settings:
         "오늘", "어제", "내일", "올해", "작년", "지난해", "내년", "당시", "최근", "전날", "이달", "지난달",
         "경우", "때문", "가운데", "가능", "필요", "상황", "부분", "내용", "사실", "결과", "이상", "이하", "수준",
         "모습", "사람", "의견", "입장", "설명", "시작", "진행", "예정", "확인", "거론", "아래", "위해",
-        "이유", "자신", "영향", "제외", "자사", "본인", "내외",
+        "이유", "자신", "영향", "제외", "자사", "본인", "내외", "취재",
     })
 
 

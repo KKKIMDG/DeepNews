@@ -12,6 +12,11 @@ from .schemas import CrawlResponse
 TITLE_BOOST = 0.6
 SUMMARY_BOOST = 0.4
 LEAD_BOOST = 0.2
+# Context (embedding) selection: share of the score from closeness to the title and summary, the MMR trade-off
+# between that score and similarity to keywords already picked, and how many candidates get embedded.
+CONTEXT_WEIGHT = 0.5
+MMR_RELEVANCE = 0.75
+MAX_CONTEXT_CANDIDATES = 60
 
 
 def limit_token_counts(token_counts: dict[str, int]) -> dict[str, int]:
@@ -25,6 +30,25 @@ def limit_token_counts(token_counts: dict[str, int]) -> dict[str, int]:
     )
 
 
+def keyword_candidates(candidates: dict[str, int], *, title: str, summary: str) -> list[str]:
+    """Terms that may become keywords, most frequent first (capped, as each one is embedded for context).
+
+    A term used once must also be in the title or summary, otherwise one-off phrases crowd out the subject.
+    """
+    eligible = [
+        term for term, count in candidates.items()
+        if count > 0 and term not in settings.keyword_stopwords and (count > 1 or term in title or term in summary)
+    ]
+    # Title and summary terms first, so the cap never drops them.
+    eligible.sort(key=lambda term: (-(term in title or term in summary), -candidates[term], term))
+    return eligible[:MAX_CONTEXT_CANDIDATES]
+
+
+def keyword_document(title: str, summary: str, content: str) -> str:
+    """What a keyword should be close to: the title plus the KoBART summary (or the lead when there is none)."""
+    return f"{title}\n{summary or content[:400]}"
+
+
 def select_keywords(
     candidates: dict[str, int],
     *,
@@ -33,32 +57,59 @@ def select_keywords(
     content: str,
     doc_freq: dict[str, int],
     total_docs: int,
+    context=None,
 ) -> dict[str, int]:
     """Pick the article's keywords from its noun-phrase counts; returns {term: count} in rank order.
 
-    score = (1 + ln count) × IDF × position boost. IDF uses keyword.article_count (articles already carrying the
-    term), so words every article has (정부, 기업) sink; a term never seen before counts as seen once. A term used
-    once must also be in the title or summary, otherwise one-off phrases crowd out the subject.
+    Base score = (1 + ln count) × IDF × position boost. IDF uses keyword.article_count (articles already carrying
+    the term), so words every article has (정부, 기업) sink; a term never seen before counts as seen once.
+
+    context, from analysis.embedding.keyword_context: (document vector, {term: vector}). With it, the score mixes
+    in how close each term is to the title and summary in meaning, which drops terms that are frequent but beside
+    the point (동반, 우위), and picks by MMR so near-synonyms (유출 / 노출) do not fill the list together.
     """
     lead = content[: max(200, len(content) // 5)]
     scores: dict[str, float] = {}
-    for term, count in candidates.items():
-        in_title, in_summary = term in title, term in summary
-        if count <= 0 or term in settings.keyword_stopwords or (count == 1 and not (in_title or in_summary)):
-            continue
+    for term in keyword_candidates(candidates, title=title, summary=summary):
         idf = math.log((total_docs + 1) / (doc_freq.get(term, 1) + 1)) + 1
-        boost = 1 + TITLE_BOOST * in_title + SUMMARY_BOOST * in_summary + LEAD_BOOST * (term in lead)
-        scores[term] = (1 + math.log(count)) * idf * boost
+        boost = 1 + TITLE_BOOST * (term in title) + SUMMARY_BOOST * (term in summary) + LEAD_BOOST * (term in lead)
+        scores[term] = (1 + math.log(candidates[term])) * idf * boost
+    if not scores:
+        return {}
+
+    vectors: dict = {}
+    if context is not None:
+        document, vectors = context
+        scores = _blend_context(scores, {term: float(vectors[term] @ document) for term in scores if term in vectors})
 
     picked: list[str] = []
-    for term in sorted(scores, key=lambda item: (-scores[item], item)):
-        # One of 잠수함 / 핵추진잠수함: whichever scores higher stands for both.
+    remaining = set(scores)
+    while remaining and len(picked) < settings.keyword_limit:
+        def mmr(term: str) -> float:
+            # Without context there are no vectors and this is plain score order.
+            overlap = max((float(vectors[term] @ vectors[other]) for other in picked
+                           if term in vectors and other in vectors), default=0.0)
+            return MMR_RELEVANCE * scores[term] - (1 - MMR_RELEVANCE) * overlap
+
+        term = max(sorted(remaining), key=mmr)
+        remaining.discard(term)
+        # One of 잠수함 / 핵추진잠수함: whichever ranks higher stands for both.
         if any(term in other or other in term for other in picked):
             continue
         picked.append(term)
-        if len(picked) == settings.keyword_limit:
-            break
     return {term: candidates[term] for term in picked}
+
+
+def _blend_context(scores: dict[str, float], relevance: dict[str, float]) -> dict[str, float]:
+    """Both parts rescaled to 0..1 across this article's candidates, then mixed by CONTEXT_WEIGHT."""
+    top = max(scores.values())
+    low, high = (min(relevance.values()), max(relevance.values())) if relevance else (0.0, 0.0)
+    spread = high - low
+    return {
+        term: (1 - CONTEXT_WEIGHT) * score / top
+        + CONTEXT_WEIGHT * ((relevance[term] - low) / spread if term in relevance and spread > 0 else 0.0)
+        for term, score in scores.items()
+    }
 
 
 def warm_up() -> None:

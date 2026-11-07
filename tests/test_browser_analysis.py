@@ -34,8 +34,10 @@ class BrowserAnalysisTests(unittest.TestCase):
         sys.modules['backend.config'] = config
         for name in ['backend.database', 'backend.domains.news.models',
                      'backend.domains.news.repository', 'backend.domains.analysis.service',
-                     'backend.domains.auth.dependencies', 'backend.domains.personalization.service']:
+                     'backend.domains.auth.dependencies', 'backend.domains.personalization.service',
+                     'backend.domains.analysis.embedding']:
             sys.modules[name] = Mock()
+        sys.modules['backend.domains.analysis.embedding'].keyword_context.return_value = None  # no context model
         analysis = sys.modules['backend.domains.analysis.service']
         analysis.AD_HIGH_THRESHOLD, analysis.AD_REVIEW_THRESHOLD = 0.8, 0.4
         cls.service = importlib.import_module('backend.domains.news.service')
@@ -114,6 +116,25 @@ class BrowserAnalysisTests(unittest.TestCase):
         self.assertEqual(list(both), ['핵추진잠수함'])
         many = {f'단어{i}': 2 for i in range(20)}
         self.assertEqual(len(select(many, title='', summary='', content='', doc_freq={}, total_docs=10)), 8)
+
+    def test_keyword_selection_with_context(self):
+        import numpy as np
+        select = sys.modules['backend.domains.crawl.service'].select_keywords
+        unit = lambda *v: np.array(v, dtype=float) / np.linalg.norm(v)
+        document = unit(1, 0, 0)
+        vectors = {'유출': unit(0.9, 0.3, 0), '노출': unit(0.9, 0.31, 0), '여권': unit(0.85, 0, 0.53),
+                   '동반': unit(0, 1, 0)}
+        candidates = {'유출': 3, '노출': 3, '여권': 3, '동반': 6}
+        common = dict(title='', summary='', content='', doc_freq={}, total_docs=1000)
+        without = list(select(candidates, **common))
+        self.assertEqual(without[0], '동반')  # frequency alone puts the off-topic word first
+        picked = list(select(candidates, **common, context=(document, vectors)))
+        self.assertEqual(picked[0], '유출')
+        self.assertEqual(picked[-1], '동반')  # far from the article's meaning: last
+        # MMR: the near-synonym of the first pick drops behind a different on-topic term.
+        self.assertLess(picked.index('여권'), picked.index('노출'))
+        # Terms the context model could not embed still compete on the base score.
+        self.assertIn('동반', select(candidates, **common, context=(document, {'유출': vectors['유출']})))
 
     def test_deferred_recommendations_skip_ranking_but_record_the_read(self):
         personalization = self.service.personalization

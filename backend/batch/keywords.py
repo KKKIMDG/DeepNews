@@ -1,4 +1,5 @@
-"""Re-pick stored articles' keywords with the current extractor (Kiwi noun phrases + crawl.service.select_keywords).
+"""Re-pick stored articles' keywords with the current extractor (Kiwi noun phrases + crawl.service.select_keywords,
+with the analysis.embedding context model).
 
 Only rows with full text are touched (browser-submitted or crawled before that path was removed); BigKinds
 candidates keep BigKinds' own keyword column. Only extraData.token_counts/keywords and article_keyword change:
@@ -10,8 +11,10 @@ from dataclasses import dataclass, field
 
 from psycopg2.extras import Json, execute_values
 
+from ..config import settings
+from ..domains.analysis import embedding
 from ..domains.crawl.extractor import extract_token_counts, get_analyzer
-from ..domains.crawl.service import select_keywords
+from ..domains.crawl.service import keyword_candidates, keyword_document, select_keywords
 from .storage import connect, get_keyword_ids, refresh_keyword_stats, upsert_keywords
 
 FULL_TEXT_ROWS = """
@@ -43,6 +46,9 @@ def refresh_keywords(apply: bool, limit: int | None = None, sample: int = 10,
     if name != "Kiwi":
         # The regex fallback would replace good keywords with worse ones.
         raise AnalyzerUnavailable("kiwipiepy가 설치되어 있지 않습니다. pip install -r requirements.txt")
+    if embedding.keyword_context("모델 확인", ["확인"]) is None:
+        # Without context the API would pick different keywords than this batch; run it where the model is.
+        raise AnalyzerUnavailable(f"키워드 문맥 모델이 없습니다: {settings.keyword_model_dir}")
 
     result = KeywordRefreshResult(applied=apply)
     with connect(database_url) as connection, connection.cursor() as cursor:
@@ -57,8 +63,11 @@ def refresh_keywords(apply: bool, limit: int | None = None, sample: int = 10,
         updates: list[tuple[int, dict[str, int]]] = []
         for news_id, title, content, summary, old in rows:
             candidates = extract_token_counts(content, analyzer)
-            keywords = select_keywords(candidates, title=title or "", summary=summary, content=content,
-                                       doc_freq=doc_freq, total_docs=total_docs)
+            title = title or ""
+            context = embedding.keyword_context(keyword_document(title, summary, content),
+                                                keyword_candidates(candidates, title=title, summary=summary))
+            keywords = select_keywords(candidates, title=title, summary=summary, content=content,
+                                       doc_freq=doc_freq, total_docs=total_docs, context=context)
             result.scanned += 1
             if keywords != old:
                 updates.append((news_id, keywords))
