@@ -18,7 +18,8 @@ def build_engine_url(database_url: str):
     return url.set(drivername="postgresql+psycopg2") if url.drivername == "postgresql" else url
 
 
-engine = create_engine(build_engine_url(settings.database_url), future=True)
+# pre_ping: a pooled connection dropped by a DB restart or pooler is replaced instead of failing the request with a 500.
+engine = create_engine(build_engine_url(settings.database_url), future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
 

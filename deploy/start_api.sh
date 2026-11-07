@@ -15,6 +15,11 @@ source "$DEEPNEWS_HOME/env.sh"
 set -u
 mkdir -p "$DEEPNEWS_HOME/logs"
 
+# The API's DB is the user-space PostgreSQL on this server (deploy/setup_postgres.sh), when it is installed.
+if [[ -d "$DEEPNEWS_HOME/pgdata" ]]; then
+  bash "$(dirname "$0")/start_db.sh"
+fi
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
   echo "기존 세션 종료: $SESSION"
   tmux kill-session -t "$SESSION"

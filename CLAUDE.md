@@ -82,6 +82,9 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
 ## 환경
 
 - `backend/config.py`가 루트 `.env`, `backend/.env` 순으로 로드한다. `DATABASE_URL` 또는 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`/`DB_SSLMODE`(기본 `require`)가 필수이며, 없으면 `backend.config` import 시점에 `RuntimeError`가 난다.
+- **DB는 GPU 서버의 사용자 영역 PostgreSQL 17**이다(`127.0.0.1:5433`, DB·계정 `deepnews`). 2026-11-07에 Supabase 무료 한도 초과로 DB가 멈춰 옮겼다. 코드는 Supabase 시절과 같으며 `DATABASE_URL`만 바뀌었다. Supabase 주소는 `.env`의 `SUPABASE_DATABASE_URL`로 남겨 두었고, 그 값을 `DATABASE_URL`에 넣으면 되돌아간다. Supabase에 남은 데이터는 이전 시점의 사본이므로 다시 쓰기 전에 옮겨야 한다.
+  - 설치·기동·이전 스크립트: `deploy/setup_postgres.sh`(PGDG `.deb`를 `~/deepnews/postgres`에 풀고 `initdb`, 여러 번 실행해도 안전), `deploy/start_db.sh`(`start_api.sh`가 먼저 부른다), `deploy/migrate_from_supabase.sh`(public 스키마 `pg_dump` → 복원 → 행 수 대조). 경로·포트는 `deploy/postgres_env.sh`에 모여 있다.
+  - 로컬 PC의 도구(빅카인즈 import 등)는 SSH 터널 `-L 5433:127.0.0.1:5433`으로 같은 DB에 접속한다. 공용 서버이므로 외부 인터페이스에는 열지 않고, 앱 계정은 비밀번호(scram)로만 접속한다.
 - 모델은 git에 포함되지 않으며 `model/`(gitignore) 아래에 둔다: `model/ad_model/`(RobertaForSequenceClassification), `model/kobart_summary_final_v2/`(BartForConditionalGeneration). 경로는 `Settings.ad_model_dir` / `Settings.summary_model_dir`. 모델 config는 transformers 5.x로 저장되었다.
 - 키워드 형태소 분석기는 Mecab → Okt → Regex 순으로 폴백한다(`get_konlpy_analyzer`). Java/Mecab이 없는 환경에서는 Regex를 쓰므로 로컬 결과와 다를 수 있다.
 
@@ -172,7 +175,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
   - `train_ad_classifier.py`: 70/15/15 층화 분할, 검증셋으로 epoch를 고르고 테스트셋 점수만 보고한다. `sample_bigkinds.py`가 광고 후보를 소비자 주제에서 뽑아 주제 편향 위험이 있어, 일반 기사도 같은 대분류 비율로 뽑는다(`bigkinds_csv/general/*.xlsx`가 있을 때).
   - `train_kobart_summary.py`: 배포 중인 KoBART 요약 모델 재현용. 하이퍼파라미터 일부는 `training_args.bin`에서 복원했고 나머지는 가정이다(파일 docstring 참고).
   - `step2_crawl.py`: robots.txt를 확인하고 프로젝트를 밝히는 User-Agent를 쓴다.
-- `deploy/start_api.sh`: GPU 서버에서 API를 안전하게 (재)시작하고 `/health`를 기다린다.
+- `deploy/start_api.sh`: GPU 서버에서 DB를 켜고(`start_db.sh`) API를 안전하게 (재)시작한 뒤 `/health`를 기다린다.
 
 ### 테스트 작성 방식
 테스트는 DB/모델 초기화를 피하려고 `backend` 패키지를 우회한다. `test_crawl_extractor.py`·`test_personalization.py`는 `importlib.util.spec_from_file_location`으로 모듈 파일을 직접 로드하고, `test_browser_analysis.py`는 `sys.modules`에 `backend.config`, `backend.database`, `analysis.service`, `auth.dependencies`, `personalization.service` 등을 stub으로 넣은 뒤 import한다. `news/service.py`에 새 의존성을 추가하면 이 stub 목록에도 넣어야 한다. 새 테스트도 같은 방식을 따라야 실제 DB 없이 실행된다.
