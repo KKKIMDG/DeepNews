@@ -49,7 +49,44 @@ const HIDE_OVERLAY = "HIDE_OVERLAY";
 const HIDE_ALL_OVERLAYS = "HIDE_ALL_OVERLAYS";
 const OVERLAY_CLOSED = "OVERLAY_CLOSED";
 const THEME_STORAGE_KEY = "deepnews.theme";
+const MOTION_STORAGE_KEY = "deepnews.motion";
 const BASE_OVERLAY_Z_INDEX = 2147483000;
+
+// Same values as panel.css (:root and [data-theme="dark"]) so the popups on the article match the side panel.
+const OVERLAY_TOKENS = {
+  light: {
+    surface: "#ffffff",
+    sunken: "#eceef7",
+    ink: "#23308a",
+    "on-ink": "#f4f5ff",
+    text: "#171a30",
+    muted: "#5b6286",
+    line: "#dfe2f0",
+    marker: "#ffe156",
+    hl: "#ffe156",
+    safe: "#138a64",
+    caution: "#b86e0f",
+    danger: "#cf3a45",
+    focus: "#5a6cf0",
+    shadow: "0 18px 42px rgba(23, 26, 48, 0.18)"
+  },
+  dark: {
+    surface: "#181c39",
+    sunken: "#20254a",
+    ink: "#2d3a9c",
+    "on-ink": "#f1f2ff",
+    text: "#eceefb",
+    muted: "#a0a7cc",
+    line: "#2c325c",
+    marker: "#f0cf3c",
+    hl: "color-mix(in srgb, #f0cf3c 55%, transparent)",
+    safe: "#46c897",
+    caution: "#f0a54a",
+    danger: "#ff7680",
+    focus: "#93a0ff",
+    shadow: "0 18px 42px rgba(0, 0, 0, 0.4)"
+  }
+};
 
 const OVERLAY_CONFIGS = {
   adLikelihood: {
@@ -87,7 +124,7 @@ const OVERLAY_CONFIGS = {
   recommendations: {
     sizeKey: "deepnews-recommendations-overlay",
     positionStorageKey: "deepnews.recommendationsOverlayPosition",
-    title: "유사 기사 추천",
+    title: "추천 기사",
     top: 608,
     width: 320,
     zIndex: BASE_OVERLAY_Z_INDEX + 3
@@ -99,6 +136,7 @@ const overlays = new Map();
 let resizeRepositionTimer = null;
 let overlayZIndex = BASE_OVERLAY_Z_INDEX + 20;
 let currentTheme = "light";
+let motionEnabled = true;
 
 void bootstrap();
 window.addEventListener("resize", scheduleOverlayViewportCheck);
@@ -234,7 +272,7 @@ function injectHighlightStyle() {
   const style = document.createElement("style");
   style.textContent = `
     .${HIGHLIGHT_CLASS} {
-      background: linear-gradient(transparent 55%, #ffe082 55%);
+      background: linear-gradient(transparent 52%, #ffe156 52%, #ffe156 92%, transparent 92%);
       color: inherit;
       padding: 0;
     }
@@ -247,7 +285,6 @@ function injectHighlightStyle() {
 // are inserted afterwards with textContent/createElement by the caller.
 function mountOverlay(name, { extraCss = "", loading = false, data = null }) {
   const config = OVERLAY_CONFIGS[name];
-  const theme = getOverlayTheme();
   let entry = overlays.get(name);
 
   if (!entry || !entry.host.isConnected) {
@@ -269,25 +306,30 @@ function mountOverlay(name, { extraCss = "", loading = false, data = null }) {
         right: 18px;
         top: ${config.top}px;
         z-index: ${config.zIndex};
-        font-family: "Segoe UI", "Malgun Gothic", sans-serif;
+        ${overlayTokenCss()}
+        font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", sans-serif;
+        font-size: 14px;
+        line-height: 1.55;
       }
 
+      /* The same card as the panel's .block, lifted off the article with a shadow. */
       .popup {
+        box-sizing: border-box;
         width: min(${config.width}px, calc(100vw - 36px));
-        padding: 14px;
-        border: 1px solid ${theme.border};
-        border-radius: 16px;
-        background: ${theme.surface};
-        color: ${theme.text};
-        box-shadow: ${theme.shadow};
-        backdrop-filter: blur(12px);
+        padding: 14px 16px 16px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: var(--shadow);
       }
 
       .top {
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
+        margin-bottom: 10px;
         cursor: grab;
         user-select: none;
         touch-action: none;
@@ -298,53 +340,75 @@ function mountOverlay(name, { extraCss = "", loading = false, data = null }) {
       }
 
       .heading {
+        display: flex;
         flex: 1 1 auto;
+        align-items: center;
+        gap: 8px;
         min-width: 0;
       }
 
-      .eyebrow {
-        margin: 0 0 4px;
-        color: #03c75a;
+      .brand {
+        flex: 0 0 auto;
+        padding: 2px 8px;
+        border-radius: 999px;
+        background: var(--ink);
+        color: var(--on-ink);
         font-size: 11px;
         font-weight: 800;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
       }
 
       .title {
+        overflow: hidden;
         margin: 0;
         font-size: 15px;
         font-weight: 800;
-        line-height: 1.35;
+        letter-spacing: -0.01em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .close {
         flex: 0 0 auto;
-        width: 26px;
-        height: 26px;
-        border: 0;
-        border-radius: 50%;
-        background: transparent;
-        color: ${theme.close};
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--muted);
         cursor: pointer;
-        font-size: 18px;
+        font: inherit;
+        font-size: 16px;
         line-height: 1;
       }
 
       .close:hover {
-        background: ${theme.closeHoverBg};
-        color: ${theme.closeHover};
+        border-color: var(--focus);
+        color: var(--text);
+      }
+
+      .close:focus-visible,
+      a:focus-visible {
+        outline: 2px solid var(--focus);
+        outline-offset: 2px;
+      }
+
+      .state {
+        margin: 0;
+        color: var(--muted);
+        font-size: 13px;
       }
 
       ${extraCss}
       ${getSubtleScrollbarCss(".popup")}
+      ${motionEnabled ? "" : "*, *::before, *::after { animation: none !important; transition: none !important; }"}
     </style>
 
     <aside class="popup" aria-label="DeepNews ${config.title}">
       <div class="top">
         <div class="heading">
-          <p class="eyebrow">DeepNews</p>
-          <p class="title">${config.title}</p>
+          <span class="brand">DeepNews</span>
+          <h2 class="title">${config.title}</h2>
         </div>
         <button class="close" type="button" title="닫기" aria-label="${config.title} 팝업 닫기">×</button>
       </div>
@@ -380,14 +444,15 @@ function createElement(tagName, className = "", text = "") {
 function adScoreView(adLikelihood) {
   const rawScore = Number(adLikelihood?.score);
   if (!Number.isFinite(rawScore) || rawScore < 0) {
-    return { analyzed: false, percent: 0, text: "미분석", color: "#9aa4ad", label: adLikelihood?.label || "아직 광고성을 분석하지 않았습니다." };
+    return { analyzed: false, ratio: 0, text: "미분석", tone: "score-none" };
   }
 
   const score = Math.min(rawScore, 1);
   // Same bands as the backend ad_label_for: >=0.8 high, >=0.4 needs review.
-  const color = score >= 0.8 ? "#ff6b6b" : score >= 0.4 ? "#ffb84d" : "#4ade80";
-  const percent = Math.round(score * 100);
-  return { analyzed: true, percent, text: `${percent}%`, color, label: adLikelihood?.label || "" };
+  const tone = score >= 0.8 ? "score-high" : score >= 0.4 ? "score-warn" : "score-good";
+  const percent = `${Math.round(score * 100)}%`;
+  // A sliver stays visible at 0% so "analyzed, not an ad" differs from "not analyzed" (as in the panel).
+  return { analyzed: true, ratio: Math.max(score, 0.03), text: adLikelihood?.label ? `${adLikelihood.label} (${percent})` : percent, tone };
 }
 
 function renderAdLikelihoodOverlay(adLikelihood) {
@@ -395,56 +460,48 @@ function renderAdLikelihoodOverlay(adLikelihood) {
     return;
   }
 
-  const theme = getOverlayTheme();
   const view = adScoreView(adLikelihood);
-  const { top, content } = mountOverlay("adLikelihood", {
+  const { content } = mountOverlay("adLikelihood", {
     data: adLikelihood,
     extraCss: `
-      .top {
-        align-items: center;
+      .ad-likelihood {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 800;
       }
 
-      .donut {
-        flex: 0 0 auto;
-        display: grid;
-        width: 70px;
-        height: 70px;
-        place-items: center;
-        border-radius: 50%;
-        background:
-          radial-gradient(circle, ${theme.surface} 0 57%, transparent 58%),
-          conic-gradient(var(--score-color) 0 var(--score), ${theme.track} var(--score) 100%);
-        color: var(--score-color);
-        font-size: 17px;
-        font-weight: 900;
-        line-height: 1;
+      .meter {
+        overflow: hidden;
+        height: 8px;
+        margin-top: 8px;
+        border-radius: 999px;
+        background: var(--sunken);
       }
 
-      .donut.unanalyzed {
-        font-size: 13px;
+      .meter span {
+        display: block;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--muted);
       }
 
-      .donut span {
-        transform: translateY(1px);
-      }
-
-      .label {
-        margin: 10px 0 0;
-        color: ${theme.muted};
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 1.45;
-      }
+      .score-good { color: var(--safe); }
+      .score-warn { color: var(--caution); }
+      .score-high { color: var(--danger); }
+      .score-none { color: var(--muted); }
+      .meter .score-good { background: var(--safe); }
+      .meter .score-warn { background: var(--caution); }
+      .meter .score-high { background: var(--danger); }
     `
   });
 
-  const donut = createElement("strong", view.analyzed ? "donut" : "donut unanalyzed");
-  donut.style.setProperty("--score", `${view.percent}%`);
-  donut.style.setProperty("--score-color", view.color);
-  donut.setAttribute("aria-label", view.analyzed ? `광고성 ${view.text}` : "광고성 미분석");
-  donut.appendChild(createElement("span", "", view.text));
-  top.insertBefore(donut, top.querySelector(".close"));
-  content.appendChild(createElement("p", "label", view.label));
+  content.appendChild(createElement("p", `ad-likelihood ${view.tone}`, view.text));
+  const meter = createElement("div", "meter");
+  meter.setAttribute("aria-hidden", "true");
+  const fill = createElement("span", view.tone);
+  fill.style.width = `${Math.round(view.ratio * 100)}%`;
+  meter.appendChild(fill);
+  content.appendChild(meter);
 }
 
 function renderKeywordOverlay(keywords) {
@@ -452,39 +509,30 @@ function renderKeywordOverlay(keywords) {
     return;
   }
 
-  const theme = getOverlayTheme();
   const { content } = mountOverlay("keywords", {
     data: keywords,
     extraCss: `
-      .pills {
+      /* Keywords read like words swiped with a highlighter, as in the panel. */
+      .keyword-list {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 12px;
+        gap: 6px 10px;
       }
 
-      .pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        max-width: 100%;
-        padding: 7px 10px;
-        border: 1px solid rgba(3, 199, 90, 0.26);
-        border-radius: 999px;
-        background: rgba(3, 199, 90, 0.16);
-        color: ${theme.text};
-        font-size: 12px;
-        font-weight: 800;
-        line-height: 1.2;
+      .hl {
+        padding: 0 3px;
+        background: linear-gradient(transparent 52%, var(--hl) 52%, var(--hl) 92%, transparent 92%);
+        font-size: 15px;
+        font-weight: 700;
       }
     `
   });
 
-  const pills = createElement("div", "pills");
+  const list = createElement("div", "keyword-list");
   for (const keyword of keywords.slice(0, 8)) {
-    pills.appendChild(createElement("span", "pill", keywordTerm(keyword)));
+    list.appendChild(createElement("span", "hl", keywordTerm(keyword)));
   }
-  content.appendChild(pills);
+  content.appendChild(list);
 }
 
 function renderKeywordChartOverlay(keywords) {
@@ -492,7 +540,6 @@ function renderKeywordChartOverlay(keywords) {
     return;
   }
 
-  const theme = getOverlayTheme();
   const overlaySize = getKeywordOverlaySize(keywords);
   const max = Math.max(...keywords.map(keywordCount), 1);
   const { popup, content } = mountOverlay("keywordChart", {
@@ -500,47 +547,45 @@ function renderKeywordChartOverlay(keywords) {
     extraCss: `
       .chart {
         display: grid;
-        gap: 9px;
-        margin-top: 12px;
+        gap: 8px;
       }
 
       .bar-row {
         display: grid;
-        grid-template-columns: minmax(52px, 82px) minmax(0, 1fr) 28px;
+        grid-template-columns: 84px minmax(0, 1fr) 28px;
         gap: 8px;
         align-items: center;
-        min-width: 0;
+        font-size: 13px;
       }
 
       .term {
         overflow: hidden;
-        color: ${theme.text};
-        font-size: 12px;
-        font-weight: 800;
-        line-height: 1.2;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
       .bar-track {
         overflow: hidden;
-        min-width: 0;
         height: 10px;
         border-radius: 999px;
-        background: ${theme.track};
+        background: var(--sunken);
       }
 
       .bar-fill {
         height: 100%;
         border-radius: inherit;
-        background: linear-gradient(90deg, #03c75a, #4ade80);
+        background: var(--marker);
+        transform-origin: left;
+        animation: grow 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+      }
+
+      @keyframes grow {
+        from { transform: scaleX(0); }
       }
 
       .count {
-        color: ${theme.muted};
-        font-size: 12px;
-        font-weight: 900;
         text-align: right;
+        font-variant-numeric: tabular-nums;
       }
     `
   });
@@ -566,7 +611,6 @@ function renderSummaryOverlay(summary) {
     return;
   }
 
-  const theme = getOverlayTheme();
   const { popup, content } = mountOverlay("summary", {
     data: normalizedSummary,
     extraCss: `
@@ -581,22 +625,20 @@ function renderSummaryOverlay(summary) {
         min-height: 0;
       }
 
-      .body {
+      .summary {
         flex: 1 1 auto;
         overflow: auto;
         min-height: 0;
-        margin: 12px 0 0;
-        color: ${theme.muted};
-        font-size: 13px;
-        font-weight: 700;
-        line-height: 1.65;
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.75;
       }
 
-      ${getSubtleScrollbarCss(".body")}
+      ${getSubtleScrollbarCss(".summary")}
     `
   });
   applyOverlaySize(popup, getSummaryOverlaySize(normalizedSummary));
-  content.appendChild(createElement("p", "body", normalizedSummary));
+  content.appendChild(createElement("p", "summary", normalizedSummary));
 }
 
 function renderRecommendationsOverlay(recommendations) {
@@ -604,66 +646,134 @@ function renderRecommendationsOverlay(recommendations) {
     return;
   }
 
-  const theme = getOverlayTheme();
   const { popup, content } = mountOverlay("recommendations", {
     data: recommendations,
     extraCss: `
-      .list {
+      .groups {
         overflow: auto;
         display: grid;
-        gap: 10px;
-        max-height: 204px;
-        margin: 12px 0 0;
+        gap: 12px;
+        max-height: 320px;
+        margin: 0;
         padding: 0;
         list-style: none;
       }
 
-      a {
-        display: block;
-        overflow: hidden;
-        color: ${theme.text};
-        font-size: 13px;
+      .publisher {
+        margin: 0 0 4px;
+        color: var(--muted);
+        font-size: 12px;
         font-weight: 800;
-        line-height: 1.45;
+      }
+
+      .article-list {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .article-list li {
+        padding: 6px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      .article-list li:first-child {
+        padding-top: 2px;
+        border-top: 0;
+      }
+
+      a {
+        color: inherit;
+        font-weight: 600;
         text-decoration: none;
-        text-overflow: ellipsis;
-        white-space: nowrap;
       }
 
       a:hover {
-        color: #03c75a;
+        color: var(--focus);
+        text-decoration: underline;
       }
 
-      .reason {
-        display: block;
-        margin-top: 2px;
-        color: ${theme.text};
+      .rec-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        margin-top: 3px;
+        color: var(--muted);
         font-size: 11px;
-        opacity: 0.62;
       }
 
-      ${getSubtleScrollbarCss(".list")}
+      .ad-badge {
+        padding: 0 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--caution) 16%, transparent);
+        color: var(--caution);
+        font-weight: 800;
+      }
+
+      ${getSubtleScrollbarCss(".groups")}
     `
   });
   applyOverlaySize(popup, getRecommendationsOverlaySize(recommendations));
 
-  const list = createElement("ul", "list");
-  for (const item of recommendations.slice(0, 5)) {
-    const listItem = document.createElement("li");
-    const link = createElement("a", "", String(item?.title || "관련 기사"));
-    // Recommendation URLs are server data; only http(s) may become a link.
-    if (isHttpUrl(item?.url)) {
-      link.href = item.url;
-      link.target = "_blank";
-      link.rel = "noreferrer";
+  const groups = createElement("ul", "groups");
+  for (const [publisher, items] of groupByPublisher(recommendations.slice(0, 5))) {
+    const group = document.createElement("li");
+    group.appendChild(createElement("h3", "publisher", publisher));
+    const list = createElement("ul", "article-list");
+    for (const item of items) {
+      list.appendChild(recommendationItem(item));
     }
-    listItem.appendChild(link);
-    if (Array.isArray(item?.reasons) && item.reasons.length) {
-      listItem.appendChild(createElement("span", "reason", item.reasons.map(String).join(" · ")));
-    }
-    list.appendChild(listItem);
+    group.appendChild(list);
+    groups.appendChild(group);
   }
-  content.appendChild(list);
+  content.appendChild(groups);
+}
+
+// Same grouping as the panel: groups follow each publisher's best-ranked article.
+function groupByPublisher(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const publisher = String(item?.publisher || publisherFromUrl(item?.url));
+    if (!groups.has(publisher)) groups.set(publisher, []);
+    groups.get(publisher).push(item);
+  }
+  return [...groups];
+}
+
+function publisherFromUrl(url) {
+  try {
+    const { hostname } = new URL(url);
+    if (hostname === "naver.com" || hostname.endsWith(".naver.com")) return "네이버뉴스";
+    return hostname.replace(/^www\./, "");
+  } catch {
+    return "기타";
+  }
+}
+
+function recommendationItem(item) {
+  const listItem = document.createElement("li");
+  const link = createElement("a", "", String(item?.title || "관련 기사"));
+  // Recommendation URLs are server data; only http(s) may become a link.
+  if (isHttpUrl(item?.url)) {
+    link.href = item.url;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+  }
+  listItem.appendChild(link);
+
+  const meta = createElement("div", "rec-meta");
+  for (const reason of Array.isArray(item?.reasons) ? item.reasons : []) {
+    meta.appendChild(createElement("span", "", String(reason)));
+  }
+  const adProbability = Number(item?.adProbability);
+  // Matches the backend "검토 필요" boundary (ad_label_for >= 0.4).
+  if (item?.adProbability != null && Number.isFinite(adProbability) && adProbability >= 0.4) {
+    meta.appendChild(createElement("span", "ad-badge", `광고성 ${Math.round(adProbability * 100)}%`));
+  }
+  if (meta.childElementCount) {
+    listItem.appendChild(meta);
+  }
+  return listItem;
 }
 
 function renderLoadingOverlays(openOverlays) {
@@ -679,7 +789,6 @@ function renderLoadingOverlay(name) {
     return;
   }
 
-  const theme = getOverlayTheme();
   const { content } = mountOverlay(name, {
     loading: true,
     extraCss: `
@@ -687,18 +796,13 @@ function renderLoadingOverlay(name) {
         display: flex;
         align-items: center;
         gap: 10px;
-        margin: 12px 0 0;
-        color: ${theme.muted};
-        font-size: 13px;
-        font-weight: 800;
-        line-height: 1.45;
       }
 
       .spinner {
         width: 14px;
         height: 14px;
-        border: 2px solid ${theme.track};
-        border-top-color: #03c75a;
+        border: 2px solid var(--sunken);
+        border-top-color: var(--focus);
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
       }
@@ -711,11 +815,11 @@ function renderLoadingOverlay(name) {
     `
   });
 
-  const status = createElement("p", "loading");
+  const status = createElement("p", "state loading");
   status.setAttribute("role", "status");
   const spinner = createElement("span", "spinner");
   spinner.setAttribute("aria-hidden", "true");
-  status.append(spinner, document.createTextNode("새 기사 분석 중입니다."));
+  status.append(spinner, document.createTextNode("새 기사를 분석하고 있습니다."));
   content.appendChild(status);
 }
 
@@ -772,7 +876,7 @@ function makeOverlayDraggable(entry, handle) {
   }
 
   const { host } = entry;
-  styleDragHandle(handle);
+  handle.title = "드래그해서 이동";
   makeOverlayFocusable(entry);
 
   handle.addEventListener("pointerdown", (event) => {
@@ -808,21 +912,6 @@ function makeOverlayDraggable(entry, handle) {
     document.addEventListener("pointermove", moveOverlay);
     document.addEventListener("pointerup", stopDrag, { once: true });
   });
-}
-
-function styleDragHandle(handle) {
-  const theme = getOverlayTheme();
-  handle.title = "드래그해서 이동";
-  handle.style.margin = "-6px -6px 0";
-  handle.style.padding = "8px 10px";
-  handle.style.border = `1px solid ${theme.border}`;
-  handle.style.borderRadius = "12px";
-  handle.style.background =
-    currentTheme === "dark" ? "rgba(255, 255, 255, 0.06)" : "rgba(3, 199, 90, 0.07)";
-  handle.style.boxShadow =
-    currentTheme === "dark"
-      ? "inset 0 -1px 0 rgba(255, 255, 255, 0.04)"
-      : "inset 0 -1px 0 rgba(31, 35, 40, 0.04)";
 }
 
 function makeOverlayFocusable(entry) {
@@ -929,7 +1018,7 @@ function getSubtleScrollbarCss(selector) {
     }
 
     ${selector}:hover {
-      scrollbar-color: rgba(3, 199, 90, 0.28) transparent;
+      scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent;
     }
 
     ${selector}::-webkit-scrollbar {
@@ -947,11 +1036,11 @@ function getSubtleScrollbarCss(selector) {
     }
 
     ${selector}:hover::-webkit-scrollbar-thumb {
-      background: rgba(3, 199, 90, 0.28);
+      background: color-mix(in srgb, var(--muted) 45%, transparent);
     }
 
     ${selector}:hover::-webkit-scrollbar-thumb:hover {
-      background: rgba(3, 199, 90, 0.44);
+      background: color-mix(in srgb, var(--muted) 70%, transparent);
     }
   `;
 }
@@ -1036,40 +1125,24 @@ function applyStoredOverlayPosition(entry) {
 }
 
 async function initializeTheme() {
-  const stored = await safeStorageGetAsync(THEME_STORAGE_KEY);
+  const stored = await safeStorageGetAsync([THEME_STORAGE_KEY, MOTION_STORAGE_KEY]);
   currentTheme = normalizeTheme(stored?.[THEME_STORAGE_KEY]);
+  motionEnabled = resolveMotion(stored?.[MOTION_STORAGE_KEY]);
 }
 
 function normalizeTheme(theme) {
   return theme === "dark" ? "dark" : "light";
 }
 
-function getOverlayTheme() {
-  if (currentTheme === "dark") {
-    return {
-      surface: "rgba(17, 20, 23, 0.94)",
-      text: "#f3f5f7",
-      muted: "rgba(243, 245, 247, 0.78)",
-      border: "rgba(255, 255, 255, 0.12)",
-      shadow: "0 18px 42px rgba(0, 0, 0, 0.28)",
-      close: "rgba(243, 245, 247, 0.68)",
-      closeHover: "#ffffff",
-      closeHoverBg: "rgba(255, 255, 255, 0.1)",
-      track: "rgba(255, 255, 255, 0.12)"
-    };
-  }
+// Same rule as the panel's applyMotion: an explicit setting wins, otherwise the OS "reduce motion" preference.
+function resolveMotion(preference) {
+  return preference ? preference === "on" : !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+}
 
-  return {
-    surface: "rgba(255, 255, 255, 0.96)",
-    text: "#1f2328",
-    muted: "rgba(31, 35, 40, 0.7)",
-    border: "rgba(31, 35, 40, 0.1)",
-    shadow: "0 18px 42px rgba(15, 23, 42, 0.16)",
-    close: "rgba(31, 35, 40, 0.58)",
-    closeHover: "#1f2328",
-    closeHoverBg: "rgba(31, 35, 40, 0.08)",
-    track: "rgba(31, 35, 40, 0.1)"
-  };
+function overlayTokenCss() {
+  return Object.entries(OVERLAY_TOKENS[currentTheme])
+    .map(([name, value]) => `--${name}: ${value};`)
+    .join(" ");
 }
 
 const OVERLAY_RENDERERS = {
@@ -1118,11 +1191,12 @@ function registerExtensionListeners() {
 
   try {
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName !== "local" || !changes[THEME_STORAGE_KEY]) {
+      if (areaName !== "local" || !(changes[THEME_STORAGE_KEY] || changes[MOTION_STORAGE_KEY])) {
         return;
       }
 
-      currentTheme = normalizeTheme(changes[THEME_STORAGE_KEY].newValue);
+      if (changes[THEME_STORAGE_KEY]) currentTheme = normalizeTheme(changes[THEME_STORAGE_KEY].newValue);
+      if (changes[MOTION_STORAGE_KEY]) motionEnabled = resolveMotion(changes[MOTION_STORAGE_KEY].newValue);
       rerenderVisibleOverlays();
     });
 

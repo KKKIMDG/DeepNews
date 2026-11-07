@@ -95,7 +95,7 @@ docker compose -f airflow/compose.yaml up -d --build                      # 로�
    - service worker는 분석·팝업 상태를 **탭별로** `chrome.storage.session`(`deepnews.tabAnalysis.<tabId>` 등)에 두고, 패널이 보고 있는 탭(`deepnews.activeTabId`)의 상태만 `storage.local`의 `STORAGE_KEY`로 복사한다. 패널은 이 값을 그린다. 분석 요청에 tabId를 넘기면 그 탭이 현재 탭이 된다.
    - 메시지 발신자 검증: 확장 프로그램 페이지(`chrome-extension://<id>/` URL)에서 온 메시지만 처리하고, content script에서는 `OVERLAY_CLOSED`만 받는다. 토큰은 영속 로그인을 위해 `storage.local`에 두며 content script는 읽지 않는다.
    - 패널은 로그아웃 상태에서 캐릭터 '딥이'(`panel/mascot.js`, 인라인 SVG)의 인사와 2단계 회원가입(계정 → 관심 분야·키워드)을 보여 주고, 로그인하면 분석·맞춤·설정 탭으로 나뉜다. 애니메이션은 설정의 "캐릭터 애니메이션"(`deepnews.motion`, 미설정 시 OS의 동작 줄이기 설정을 따름)으로 끄며, 꺼지면 `:root[data-motion="off"]`가 모든 animation/transition을 없앤다. 관심 분야 코드 목록은 `constants.js::INTEREST_TOPICS`와 백엔드 `TOPIC_LABELS`가 같아야 한다.
-   - content script의 하이라이트는 DOM API로만 `<mark>`를 넣고(`innerHTML` 금지), 팝업은 closed shadow root를 모듈 변수로만 참조한다. 본문 영역은 네이버 선택자 → 일반 기사 선택자 → 텍스트가 가장 많은 블록 순으로 찾는다(YTN처럼 `<p>` 없이 한 `div`에 본문이 있는 사이트 대응).
+   - content script의 하이라이트는 DOM API로만 `<mark>`를 넣고(`innerHTML` 금지), 팝업은 closed shadow root를 모듈 변수로만 참조한다. 팝업 디자인은 패널과 같으며, 색은 `content-script.js::OVERLAY_TOKENS`에 `panel.css`의 `:root` 토큰을 복사해 쓴다(색을 바꾸면 두 곳 모두). 테마·애니메이션 설정도 패널과 같은 키를 따른다. 본문 영역은 네이버 선택자 → 일반 기사 선택자 → 텍스트가 가장 많은 블록 순으로 찾는다(YTN처럼 `<p>` 없이 한 `div`에 본문이 있는 사이트 대응).
    - 401이면 저장된 로그인을 지운다. 비밀번호 확인 실패(탈퇴·비밀번호 변경)는 그래서 403이다.
 2. `domains/news/service.py::analyze_or_get`이 핵심 오케스트레이터:
    - **서버는 기사 URL에 접속하지 않는다.** 로그인과 브라우저 본문(`content`)이 필수이며, `prepare_browser_article`로 정제·키워드 추출만 한다. 서버 크롤링 경로(`/crawl/article`, URL만 받는 분석, `/news/crawl`)는 네이버 정책 위반·SSRF·공용 데이터 무단 덮어쓰기 문제로 삭제했다. 되살리지 않는다.
