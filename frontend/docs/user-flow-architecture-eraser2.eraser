@@ -1,0 +1,65 @@
+direction right
+
+User [label: "\n사용자", color: gray]
+
+ChromeExtension [label: "\n크롬 확장 프로그램", color: blue] {
+  SidePanel [label: "\n사이드패널 UI\npanel.html / panel.js", color: blue]
+  ServiceWorker [label: "\n백그라운드\nservice-worker.js", color: blue]
+  ContentScript [label: "\n기사 페이지 스크립트\ncontent-script.js", color: blue]
+  Popup [label: "\n기사 페이지 팝업", color: purple]
+}
+
+BrowserStorage [label: "\n브라우저 저장소", color: orange] {
+  LocalStorage [label: "\n로컬 저장소\n로그인 상태 / 분석 상태 / 분석 결과", color: orange]
+}
+
+ServerArea [label: "\n서버 영역", color: green] {
+  Backend [label: "\n백엔드 API\n인증 / 기사 분석", color: green]
+}
+
+NewsPageArea [label: "\n뉴스 페이지 영역", color: gray] {
+  NewsPage [label: "\n네이버 뉴스 기사", color: gray]
+}
+
+User > SidePanel: "\n1. 확장 패널 열기"
+
+SidePanel > ServiceWorker: "\n2. 초기 상태 요청"
+ServiceWorker > LocalStorage: "\n로그인 상태 / 분석 결과 조회"
+LocalStorage > SidePanel: "\n저장된 상태 반환"
+SidePanel > User: "\n3. 비로그인 시 로그인 / 회원가입만 표시"
+
+User > SidePanel: "\n4. 로그인 또는 회원가입"
+SidePanel > ServiceWorker: "LOGIN / SIGNUP"
+ServiceWorker > Backend: "\n인증 요청"
+Backend > ServiceWorker: "token, user\n반환"
+ServiceWorker > LocalStorage: "\n로그인 상태 저장"
+LocalStorage > SidePanel: "\n로그인 완료 알림"
+SidePanel > User: "\n분석 화면 표시"
+
+NewsPage > ContentScript: "\n5. 기사 페이지 로드"
+ContentScript > ServiceWorker: "\n기사 URL 전달"
+ServiceWorker > ServiceWorker: "\n현재 기사 URL 확인"
+
+ServiceWorker > LocalStorage: "\n6. 로그인 토큰 확인"
+LocalStorage > ServiceWorker: "\n토큰 있음 / 없음"
+ServiceWorker > SidePanel: "\n토큰 없으면 분석 차단"
+
+ServiceWorker > LocalStorage: "\n7. 분석 상태를 loading으로 저장"
+LocalStorage > SidePanel: "loading\n상태 전달"
+SidePanel > User: "\n분석 중 표시"
+
+ServiceWorker > Backend: "\n8. 기사 URL 분석 요청"
+Backend > ServiceWorker: "\n분석 결과 반환"
+ServiceWorker > LocalStorage: "\n9. 분석 결과 저장"
+LocalStorage > SidePanel: "ready\n상태 전달"
+SidePanel > User: "\n10. 분석 결과 표시\n키워드 / 요약 / 추천 / 광고성"
+
+User > SidePanel: "\n11. 팝업 버튼 클릭"
+SidePanel > ContentScript: "\n팝업 표시 요청"
+ContentScript > Popup: "\n팝업 생성"
+Popup > NewsPage: "\n기사 위에 표시"
+
+User > SidePanel: "\n12. 로그아웃"
+SidePanel > ServiceWorker: "LOGOUT"
+ServiceWorker > LocalStorage: "\n로그인 / 분석 상태 초기화"
+LocalStorage > SidePanel: "\n로그인 화면 복귀"

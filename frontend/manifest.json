@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "DeepNews Analyzer",
+  "version": "0.3.7",
+  "description": "네이버 뉴스와 일반 언론사 기사 페이지에서 키워드 강조, AI 요약, 유사 기사 추천, 광고성 판단을 제공합니다.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/panel/panel.html"
+  },
+  "action": {
+    "default_title": "DeepNews Analyzer"
+  },
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://*/*"
+  ]
+}

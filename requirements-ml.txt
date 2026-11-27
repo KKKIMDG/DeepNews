@@ -1,0 +1,9 @@
+# ai/ training and data-preparation scripts (not needed by the API).
+-r requirements.txt
+accelerate==1.1.1
+numpy==2.2.6
+scikit-learn==1.7.2
+mlflow
+# ai/step2_crawl.py only
+newspaper3k==0.2.8
+lxml_html_clean

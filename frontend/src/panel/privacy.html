@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepNews 개인정보 처리방침</title>
+    <link rel="stylesheet" href="./panel.css" />
+    <style>
+      .policy {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+
+      .policy h1 {
+        margin: 0 0 6px;
+      }
+
+      .policy p,
+      .policy li {
+        line-height: 1.7;
+      }
+
+      .policy ul {
+        margin: 8px 0 0;
+        padding-left: 20px;
+      }
+
+      .draft-notice {
+        border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+        background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel policy">
+      <header class="hero">
+        <p class="eyebrow">DeepNews</p>
+        <h1>개인정보 처리방침</h1>
+        <p class="subcopy">DeepNews Analyzer 확장 프로그램과 분석 서버가 처리하는 정보를 설명합니다.</p>
+      </header>
+
+      <section class="card draft-notice" role="note">
+        <p>이 문서는 검토 전 초안입니다. 담당자와 소속 기관의 검토를 거쳐 확정되기 전까지 내용이 바뀔 수 있습니다.</p>
+      </section>
+
+      <section class="card">
+        <h2>1. 수집하는 정보</h2>
+        <ul>
+          <li><strong>계정 정보</strong>: 이메일 주소, 비밀번호(원문은 저장하지 않고 scrypt로 해시한 값만 저장)</li>
+          <li><strong>로그인 세션</strong>: 로그인 토큰의 해시값(SHA-256)과 만료 시각</li>
+          <li><strong>읽은 기사 기록</strong>: 분석한 기사, 읽은 시각, 읽은 횟수</li>
+          <li><strong>관심사 설정</strong>: 가입할 때나 이후에 고른 관심 분야, 직접 추가한 관심 키워드와 제외 키워드</li>
+          <li><strong>추천 설정</strong>: 광고성 기사 숨김 기준값</li>
+          <li><strong>기사 신고</strong>: 분석 결과를 신고한 기록과 선택 입력한 신고 사유</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>2. 기사 본문과 분석 결과</h2>
+        <p>
+          확장 프로그램은 사용자가 <strong>현재 기사 분석</strong> 버튼을 눌렀을 때만 그 페이지의 주소, 제목, 본문, 발행일을
+          분석 서버로 보냅니다. 버튼을 누르지 않은 페이지의 내용은 읽거나 보내지 않습니다.
+        </p>
+        <p>
+          보낸 기사 본문과 키워드, 요약, 광고성 판단 결과는 다른 사용자도 함께 쓰는 공용 기사 데이터로 저장됩니다.
+          같은 기사를 다른 사용자가 분석하면 저장된 결과를 보여 주며, 결과가 기사와 다르면 신고할 수 있습니다.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>3. 이용 목적</h2>
+        <ul>
+          <li>회원 식별과 로그인 유지</li>
+          <li>기사 키워드 추출, 요약, 광고성 판단 제공</li>
+          <li>읽은 기사, 관심 분야, 관심 키워드를 바탕으로 한 기사 추천</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>4. 보관 기간</h2>
+        <ul>
+          <li>로그인 세션은 발급 후 30일이 지나면 만료됩니다. 로그아웃하거나 비밀번호를 바꾸면 그 전에 폐기됩니다.</li>
+          <li>계정 정보, 읽은 기사 기록, 관심사 설정은 회원 탈퇴 시까지 보관합니다.</li>
+          <li>공용 기사 데이터(기사 본문, 키워드, 요약, 광고성 판단 결과)는 탈퇴 후에도 남습니다.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>5. 열람, 내보내기, 삭제</h2>
+        <ul>
+          <li>패널의 <strong>읽은 기사</strong>와 <strong>관심 분야·관심 키워드</strong>에서 기록을 확인하고 하나씩 지우거나 바꿀 수 있습니다.</li>
+          <li><strong>내 데이터 내보내기</strong>로 계정 정보, 키워드 설정, 읽은 기사 기록을 JSON 파일로 받을 수 있습니다.</li>
+          <li><strong>회원 탈퇴</strong>를 하면 계정, 세션, 읽은 기사 기록, 관심사 설정이 즉시 삭제됩니다.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>6. 제3자 제공과 처리 위탁</h2>
+        <p>수집한 개인정보를 제3자에게 제공하거나 외부 업체에 처리를 맡기지 않습니다.</p>
+      </section>
+
+      <section class="card">
+        <h2>7. 저장 위치와 보호 조치</h2>
+        <ul>
+          <li>서버 위치: 연구용 서버(대학 내)</li>
+          <li>비밀번호와 로그인 토큰은 해시값으로만 저장합니다.</li>
+          <li>확장 프로그램은 로그인 토큰을 브라우저의 확장 프로그램 저장소에 보관하며, 웹 페이지에는 전달하지 않습니다.</li>
+          <li>기사 본문을 읽는 권한은 사용자가 허용한 사이트에만 적용되며, 패널의 <strong>사이트 권한</strong>에서 언제든 해제할 수 있습니다.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>8. 문의</h2>
+        <p>개인정보 관련 문의: [담당자 이메일]</p>
+      </section>
+    </main>
+  </body>
+</html>

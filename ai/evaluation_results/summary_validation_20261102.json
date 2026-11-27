@@ -1,0 +1,35 @@
+{
+  "sample_size": 500,
+  "rouge_f1": {
+    "rouge1": 0.3749784769162557,
+    "rouge2": 0.24667337776642786,
+    "rougeL": 0.33023540276051705
+  },
+  "mean_generation_seconds": 0.48841436959803103,
+  "timing_scope": "model.generate only, after warmup; CUDA synchronized; excludes tokenization/ROUGE/network",
+  "device": "cuda",
+  "gpu_name": "NVIDIA GeForce RTX 2060",
+  "model_dir": "./model/kobart_summary_final_v2",
+  "generation_parameters": {
+    "max_length": 150,
+    "min_length": 20,
+    "num_beams": 4,
+    "do_sample": false,
+    "early_stopping": true,
+    "no_repeat_ngram_size": 3,
+    "repetition_penalty": 1.2
+  },
+  "evaluation_type": "validation; not independent test",
+  "validation_split": {
+    "library": "datasets",
+    "version": "4.8.5",
+    "seed": 42,
+    "validation_fraction": 0.1,
+    "total_rows": 268535,
+    "training_rows": 241681,
+    "validation_rows": 26854
+  },
+  "source": "User-supplied evaluation console output, 2026-11-02 17:18 Asia/Seoul",
+  "source_identity_condition": "Original training JSONL and row order must be unchanged; the training-time file hash was not supplied.",
+  "note": "NFKC/lowercase Unicode-word ROUGE F1, averaged per example. Not comparable to the previous default-tokenizer scores."
+}

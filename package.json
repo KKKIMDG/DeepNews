@@ -1,0 +1,10 @@
+{
+  "name": "deepnews",
+  "private": true,
+  "scripts": {
+    "test:js": "node tests/test_article_extraction.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "26.1.0"
+  }
+}
